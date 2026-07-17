@@ -70,15 +70,15 @@ export default function Hero({ onFindRide, onOfferRide }) {
         pointerEvents: 'none'
       }} />
 
-      {/* Main Content */}
-      <motion.div 
-        className="container" 
+
+      <motion.div
+        className="container"
         style={{ maxWidth: '960px', zIndex: 1 }}
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
-        <motion.div 
+        <motion.div
           variants={itemVariants}
           style={{
             display: 'inline-flex',
@@ -97,7 +97,7 @@ export default function Hero({ onFindRide, onOfferRide }) {
           <span>Verified Drivers & Safe Journeys</span>
         </motion.div>
 
-        <motion.h1 
+        <motion.h1
           variants={itemVariants}
           style={{
             fontSize: '56px',
@@ -111,7 +111,7 @@ export default function Hero({ onFindRide, onOfferRide }) {
           Travel Smarter
         </motion.h1>
 
-        <motion.p 
+        <motion.p
           variants={itemVariants}
           style={{
             fontSize: '18px',
@@ -126,7 +126,7 @@ export default function Hero({ onFindRide, onOfferRide }) {
         </motion.p>
 
         {/* Call to Actions */}
-        <motion.div 
+        <motion.div
           variants={itemVariants}
           style={{
             display: 'flex',
@@ -136,7 +136,7 @@ export default function Hero({ onFindRide, onOfferRide }) {
             marginBottom: '80px'
           }}
         >
-          <button 
+          <button
             onClick={onFindRide}
             className="gradient-btn"
             style={{
@@ -150,8 +150,8 @@ export default function Hero({ onFindRide, onOfferRide }) {
             <Search size={20} />
             Find a Ride
           </button>
-          
-          <button 
+
+          <button
             onClick={onOfferRide}
             style={{
               padding: '16px 32px',
@@ -187,7 +187,7 @@ export default function Hero({ onFindRide, onOfferRide }) {
         </motion.div>
 
         {/* Responsive Grid of Metric Cards */}
-        <motion.div 
+        <motion.div
           variants={itemVariants}
           style={{
             display: 'grid',
@@ -200,12 +200,12 @@ export default function Hero({ onFindRide, onOfferRide }) {
           className="metrics-row"
         >
           {/* 100% Verified Card */}
-          <motion.div 
+          <motion.div
             className="glass-card"
             variants={cardVariants}
-            style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               padding: '28px 24px',
               borderRadius: '16px',
@@ -233,12 +233,12 @@ export default function Hero({ onFindRide, onOfferRide }) {
           </motion.div>
 
           {/* Members Card */}
-          <motion.div 
+          <motion.div
             className="glass-card"
             variants={cardVariants}
-            style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               padding: '28px 24px',
               borderRadius: '16px',
@@ -266,12 +266,12 @@ export default function Hero({ onFindRide, onOfferRide }) {
           </motion.div>
 
           {/* SOS Safety Card */}
-          <motion.div 
+          <motion.div
             className="glass-card"
             variants={cardVariants}
-            style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               padding: '28px 24px',
               borderRadius: '16px',
