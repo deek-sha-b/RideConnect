@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+const firebaseAdmin = require('./firebaseAdmin');
 
 const { User, Ride, Booking, Message, SOS } = require('./models');
 
@@ -446,6 +447,64 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error logging in', error: error.message });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    // Verify the Firebase ID token
+    const decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
+    const { email, name, picture } = decodedToken;
+    
+    // Check if user exists
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create a new user with dummy password (since they use Google Auth)
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-8), salt);
+      
+      user = await User.create({
+        name: name || 'Google User',
+        email,
+        password: hashedPassword,
+        phone: '', // Google doesn't always provide phone numbers
+        role: 'passenger', // Default role
+        driverDetails: {
+          licenseNo: '',
+          licenseUrl: '',
+          idNo: '',
+          vehicleNo: '',
+          vehicleModel: '',
+          vehicleType: 'Sedan',
+          insuranceNo: '',
+          gender: '',
+          selfieUrl: picture || '',
+          isVerified: false,
+          verificationStatus: 'unsubmitted',
+          earnings: 0
+        }
+      });
+    }
+
+    const jwtToken = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({
+      token: jwtToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        rating: user.rating,
+        favoriteLocations: user.favoriteLocations,
+        driverDetails: user.driverDetails
+      }
+    });
+  } catch (error) {
+    res.status(401).json({ message: 'Google authentication failed', error: error.message });
   }
 });
 

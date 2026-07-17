@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, User, Phone, CheckCircle, AlertCircle } from 'lucide-react';
 import { API_URL } from '../config';
+import { signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../firebaseConfig';
 
 export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
   const [mode, setMode] = useState(initialMode); // 'login' or 'register'
@@ -175,6 +177,35 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
       }
     } catch (err) {
       setError(err.message || 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      
+      const res = await fetch(`${API_URL}/api/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ token: idToken })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Google Authentication failed.');
+      }
+      
+      onAuthSuccess(data.user, data.token);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to authenticate with Google.');
     } finally {
       setLoading(false);
     }
@@ -515,6 +546,40 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
             {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : 'Register Account')}
           </button>
         </form>
+
+        <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0' }}>
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+          <span style={{ padding: '0 12px', fontSize: '12px', color: 'var(--text-light)', fontWeight: '600', textTransform: 'uppercase' }}>Or</span>
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            fontSize: '15px',
+            borderRadius: '10px',
+            backgroundColor: 'white',
+            color: '#333',
+            border: '1px solid #ddd',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9f9f9'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" style={{ width: '20px', height: '20px' }} />
+          Continue with Google
+        </button>
       </div>
     </div>
   );
