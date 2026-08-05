@@ -57,6 +57,7 @@ export default function App() {
   const [bookingPickup, setBookingPickup] = useState('');
   const [bookingDestination, setBookingDestination] = useState('');
   const [bookingSeats, setBookingSeats] = useState(1);
+  const [bookingNote, setBookingNote] = useState('');
   const [bookingStatusMsg, setBookingStatusMsg] = useState('');
   const [bookingError, setBookingError] = useState('');
   
@@ -217,8 +218,9 @@ export default function App() {
     const toLoc = endLoc || bookingDestination || selectedRideForBooking.destination;
     
     const stops = selectedRideForBooking.stops;
-    const startIdx = stops.indexOf(fromLoc);
-    const endIdx = stops.indexOf(toLoc);
+    const stopNames = stops.map(s => typeof s === 'object' ? (s.name || '') : s);
+    const startIdx = stopNames.indexOf(fromLoc);
+    const endIdx = stopNames.indexOf(toLoc);
     if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) return 0;
     
     const LOCAL_PLACES = {
@@ -229,10 +231,18 @@ export default function App() {
       'Badiadka': { lat: 12.5884, lng: 75.0698 },
       'Perla': { lat: 12.6426, lng: 75.1049 }
     };
+
+    const extractPointCoords = (s) => {
+      if (typeof s === 'object' && s && s.lat != null && s.lng != null && (s.lat !== 0 || s.lng !== 0)) {
+        return { lat: parseFloat(s.lat), lng: parseFloat(s.lng) };
+      }
+      const name = typeof s === 'object' ? s.name : s;
+      return LOCAL_PLACES[name] || { lat: 12.5, lng: 75.0 };
+    };
     
     const getHaversine = (l1, l2) => {
-      const c1 = LOCAL_PLACES[l1];
-      const c2 = LOCAL_PLACES[l2];
+      const c1 = extractPointCoords(l1);
+      const c2 = extractPointCoords(l2);
       if (!c1 || !c2) return 0;
       const R = 6371;
       const dLat = (c2.lat - c1.lat) * Math.PI / 180;
@@ -259,8 +269,9 @@ export default function App() {
       return;
     }
     const stops = selectedRideForBooking.stops || [];
-    const pIdx = stops.indexOf(bookingPickup);
-    const dIdx = stops.indexOf(bookingDestination);
+    const stopNames = stops.map(s => typeof s === 'object' ? (s.name || '') : s);
+    const pIdx = stopNames.indexOf(bookingPickup);
+    const dIdx = stopNames.indexOf(bookingDestination);
     if (pIdx === -1 || dIdx === -1) {
       setBookingError('Selected stops are not part of this ride\'s route.');
       return;
@@ -281,7 +292,8 @@ export default function App() {
           rideId: selectedRideForBooking._id,
           seatsBooked: bookingSeats,
           pickupLocation: bookingPickup,
-          destination: bookingDestination
+          destination: bookingDestination,
+          bookingNote
         })
       });
 
@@ -329,8 +341,11 @@ export default function App() {
       {selectedRideForBooking && (() => {
         const segmentDistance = getBookingSegmentDistance();
         const totalDistance = getBookingSegmentDistance(selectedRideForBooking.stops[0], selectedRideForBooking.stops[selectedRideForBooking.stops.length - 1]);
-        const segmentFarePerSeat = totalDistance > 0 ? (segmentDistance / totalDistance) * (selectedRideForBooking.totalPrice || selectedRideForBooking.price || 0) : 0;
-        const segmentFare = segmentFarePerSeat * bookingSeats;
+        const driverSeatPrice = (selectedRideForBooking.totalPrice || selectedRideForBooking.price || 0) / (selectedRideForBooking.totalSeats || 1);
+        const segmentFarePerSeat = totalDistance > 0 ? (segmentDistance / totalDistance) * driverSeatPrice : 0;
+        const baseFareTotal = segmentFarePerSeat * bookingSeats;
+        const serviceFee = Math.max(15, Math.round(baseFareTotal * 0.12));
+        const totalPassengerPay = baseFareTotal + serviceFee;
         const segmentEta = Math.ceil(segmentDistance * 2); // 2 mins per km
 
         return (
@@ -368,9 +383,10 @@ export default function App() {
                         className="form-input"
                       >
                         <option value="">Select Pickup</option>
-                        {selectedRideForBooking.stops?.map(stop => (
-                          <option key={stop} value={stop}>{stop}</option>
-                        ))}
+                        {selectedRideForBooking.stops?.map(stop => {
+                          const name = typeof stop === 'object' ? (stop.name || '') : stop;
+                          return <option key={name} value={name}>{name}</option>;
+                        })}
                       </select>
                     </div>
 
@@ -386,9 +402,10 @@ export default function App() {
                         className="form-input"
                       >
                         <option value="">Select Drop</option>
-                        {selectedRideForBooking.stops?.map(stop => (
-                          <option key={stop} value={stop}>{stop}</option>
-                        ))}
+                        {selectedRideForBooking.stops?.map(stop => {
+                          const name = typeof stop === 'object' ? (stop.name || '') : stop;
+                          return <option key={name} value={name}>{name}</option>;
+                        })}
                       </select>
                     </div>
                   </div>
@@ -403,10 +420,15 @@ export default function App() {
                     <div>⏰ <b>Departure Time:</b> {new Date(selectedRideForBooking.departureTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
                     <div>📏 <b>Segment Distance:</b> {segmentDistance.toFixed(1)} km</div>
                     <div>⏱️ <b>Segment ETA:</b> {segmentEta} mins</div>
-                    <div>💰 <b>Fare per Seat:</b> ₹{segmentFarePerSeat.toFixed(2)}</div>
+                    <div>💰 <b>Driver Fare / Seat:</b> ₹{segmentFarePerSeat.toFixed(2)}</div>
+                    {selectedRideForBooking.instantBooking && (
+                      <div style={{ color: 'var(--primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                        ⚡ Instant Booking: Seat confirmed immediately!
+                      </div>
+                    )}
                   </div>
 
-                  <div style={{ marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Number of Seats to Book</label>
                     <select
                       value={bookingSeats}
@@ -419,9 +441,38 @@ export default function App() {
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '12px', fontSize: '14px', marginBottom: '16px' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Total Segment Fare:</span>
-                    <span style={{ fontWeight: '800', color: 'var(--primary)', fontSize: '16px' }}>₹{segmentFare.toFixed(2)}</span>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Note to Driver (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="Hi! I have 1 handbag. See you at the pickup point!"
+                      value={bookingNote}
+                      onChange={(e) => setBookingNote(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div style={{
+                    borderTop: '1px solid var(--border-color)',
+                    paddingTop: '12px',
+                    fontSize: '13px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                      <span>Driver Seat Fare ({bookingSeats}x):</span>
+                      <span>₹{baseFareTotal.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                      <span>Booking Service Fee (12%):</span>
+                      <span>+₹{serviceFee.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '800', color: 'var(--primary)', borderTop: '1px dashed var(--border-color)', paddingTop: '6px' }}>
+                      <span>Total Amount to Pay:</span>
+                      <span>₹{totalPassengerPay.toFixed(2)}</span>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: '12px' }}>
@@ -440,7 +491,7 @@ export default function App() {
                       className="gradient-btn"
                       style={{ flex: 1, padding: '10px', borderRadius: '8px' }}
                     >
-                      Confirm Booking
+                      {selectedRideForBooking.instantBooking ? 'Instant Book Seat ⚡' : 'Request Seat'}
                     </button>
                   </div>
                 </>

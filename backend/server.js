@@ -20,9 +20,28 @@ const LOCAL_PLACES = {
   'Perla': { lat: 12.6426, lng: 75.1049 }
 };
 
+function extractCoords(stop) {
+  if (!stop) return null;
+  if (typeof stop === 'object') {
+    if (stop.lat != null && stop.lng != null) return { lat: parseFloat(stop.lat), lng: parseFloat(stop.lng) };
+    if (stop.coords && stop.coords.lat != null) return { lat: parseFloat(stop.coords.lat), lng: parseFloat(stop.coords.lng) };
+  }
+  if (typeof stop === 'string' && LOCAL_PLACES[stop]) {
+    return LOCAL_PLACES[stop];
+  }
+  return null;
+}
+
+function getStopName(stop) {
+  if (!stop) return '';
+  if (typeof stop === 'string') return stop;
+  if (typeof stop === 'object' && stop.name) return stop.name;
+  return String(stop);
+}
+
 function getHaversineDistance(loc1, loc2) {
-  const coords1 = LOCAL_PLACES[loc1];
-  const coords2 = LOCAL_PLACES[loc2];
+  const coords1 = extractCoords(loc1);
+  const coords2 = extractCoords(loc2);
   if (!coords1 || !coords2) return 0;
 
   const R = 6371; // Radius of earth in km
@@ -47,14 +66,65 @@ function getRouteDistance(stops) {
 
 function getSegmentDistance(stops, pickup, destination) {
   if (!stops || stops.length < 2) return 0;
-  const startIdx = stops.indexOf(pickup);
-  const endIdx = stops.indexOf(destination);
-  if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) return 0;
+
+  const names = stops.map(getStopName);
+  let startIdx = names.indexOf(pickup);
+  let endIdx = names.indexOf(destination);
+
+  // Fallback case-insensitive / partial match
+  if (startIdx === -1) {
+    startIdx = names.findIndex(n => n.toLowerCase().includes((pickup || '').toLowerCase()));
+  }
+  if (endIdx === -1) {
+    endIdx = names.findIndex(n => n.toLowerCase().includes((destination || '').toLowerCase()));
+  }
+
+  if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) {
+    // If not matching by name, return full route distance as default segment estimate
+    return getRouteDistance(stops);
+  }
+
   let dist = 0;
   for (let i = startIdx; i < endIdx; i++) {
     dist += getHaversineDistance(stops[i], stops[i + 1]);
   }
   return dist;
+}
+
+// BlaBlaCar Vehicle Operating Costs & Service Fee Configuration
+const VEHICLE_OPERATING_COSTS = {
+  'Hatchback': { fuelCostPerKm: 3.5, wearCostPerKm: 1.0, totalCostPerKm: 4.5 },
+  'Sedan':     { fuelCostPerKm: 4.5, wearCostPerKm: 1.5, totalCostPerKm: 6.0 },
+  'SUV':       { fuelCostPerKm: 6.0, wearCostPerKm: 2.0, totalCostPerKm: 8.0 },
+  'Electric':  { fuelCostPerKm: 1.5, wearCostPerKm: 1.0, totalCostPerKm: 2.5 }
+};
+const SERVICE_FEE_PERCENTAGE = 0.12; // 12% passenger booking fee
+const MIN_SERVICE_FEE = 15; // ₹15 minimum fee
+
+function calculateRecommendedFare(stops, vehicleType, totalSeats) {
+  const totalDist = getRouteDistance(stops);
+  const costConfig = VEHICLE_OPERATING_COSTS[vehicleType] || VEHICLE_OPERATING_COSTS['Sedan'];
+  const totalTripCost = totalDist * costConfig.totalCostPerKm;
+  const seats = Math.max(1, parseInt(totalSeats) || 1);
+  const recPricePerSeat = parseFloat((totalTripCost / seats).toFixed(2));
+  
+  return {
+    totalDist,
+    costConfig,
+    totalTripCost,
+    recPricePerSeat,
+    minAllowedSeatPrice: parseFloat((0.80 * recPricePerSeat).toFixed(2)),
+    maxAllowedSeatPrice: parseFloat((1.20 * recPricePerSeat).toFixed(2))
+  };
+}
+
+function calculatePassengerServiceFee(baseFare) {
+  const serviceFee = Math.max(MIN_SERVICE_FEE, Math.round(baseFare * SERVICE_FEE_PERCENTAGE));
+  return {
+    baseFare: parseFloat(baseFare.toFixed(2)),
+    serviceFee,
+    totalAmount: parseFloat((baseFare + serviceFee).toFixed(2))
+  };
 }
 
 function isPassengerRouteOnDriverRoute(driverPickup, driverDest, passengerPickup, passengerDest) {
@@ -577,7 +647,7 @@ app.post('/api/driver/verify', authenticateToken, upload.single('license'), asyn
 // Search rides with filters
 app.get('/api/rides', async (req, res) => {
   try {
-    const { pickup, destination, date, seats, vehicleType, genderPreference, maxPrice } = req.query;
+    const { pickup, destination, date, seats, vehicleType, genderPreference, maxPrice, instantBooking, ladiesOnly, maxTwoInBack } = req.query;
     const queryFilter = { status: 'pending', availableSeats: { $gt: 0 } };
 
     // Date check (match same day or later)
@@ -600,31 +670,51 @@ app.get('/api/rides', async (req, res) => {
     if (genderPreference && genderPreference !== 'Any') {
       queryFilter.genderPreference = genderPreference;
     }
+    if (instantBooking === 'true') {
+      queryFilter.instantBooking = true;
+    }
+    if (ladiesOnly === 'true') {
+      queryFilter.ladiesOnly = true;
+    }
+    if (maxTwoInBack === 'true') {
+      queryFilter.maxTwoInBack = true;
+    }
 
-    let rides = await Ride.find(queryFilter).populate('driver', 'name rating ratingCount driverDetails');
+    let rides = await Ride.find(queryFilter).populate('driver', 'name rating ratingCount bio chatPreference musicPreference petsAllowed smokingAllowed ladiesOnlyPref driverDetails');
 
     // Filter by pickup & destination (intermediate segments)
-    rides = rides.filter(ride => {
-      const p = pickup || ride.pickupLocation;
-      const d = destination || ride.destination;
+    if (pickup || destination) {
+      rides = rides.filter(ride => {
+        const stopNames = (ride.stops || []).map(getStopName);
+        const pQuery = (pickup || '').trim().toLowerCase();
+        const dQuery = (destination || '').trim().toLowerCase();
 
-      const pIdx = ride.stops.indexOf(p);
-      const dIdx = ride.stops.indexOf(d);
+        let pIdx = pQuery ? stopNames.findIndex(name => name.toLowerCase().includes(pQuery)) : 0;
+        let dIdx = dQuery ? stopNames.findIndex(name => name.toLowerCase().includes(dQuery)) : stopNames.length - 1;
 
-      return pIdx !== -1 && dIdx !== -1 && pIdx < dIdx;
-    });
+        if (pQuery && pIdx === -1) return false;
+        if (dQuery && dIdx === -1) return false;
 
-    // Map each ride to calculate segment details
+        return pIdx < dIdx || (pIdx === 0 && dIdx === stopNames.length - 1);
+      });
+    }
+
+    // Map each ride to calculate segment details and service fee
     rides = rides.map(ride => {
       const p = pickup || ride.pickupLocation;
       const d = destination || ride.destination;
       const dist = getSegmentDistance(ride.stops, p, d);
       const totalRouteDist = getRouteDistance(ride.stops);
-      const segmentPrice = totalRouteDist > 0 ? parseFloat(((dist / totalRouteDist) * ride.price).toFixed(2)) : 0;
+      const seatPriceDriver = ride.totalSeats > 0 ? (ride.price / ride.totalSeats) : ride.price;
+      const segmentBaseFare = totalRouteDist > 0 ? parseFloat(((dist / totalRouteDist) * seatPriceDriver).toFixed(2)) : 0;
+      const feeDetails = calculatePassengerServiceFee(segmentBaseFare);
 
       const rideObj = ride.toObject();
-      rideObj.totalPrice = ride.price; // Preserve the original driver total trip price!
-      rideObj.price = segmentPrice; // Overwrite price to be the segment price so frontend displays it!
+      rideObj.totalPrice = ride.price; // Driver total trip price
+      rideObj.price = feeDetails.baseFare; // Driver segment price per seat
+      rideObj.serviceFee = feeDetails.serviceFee; // Platform 12% booking fee
+      rideObj.totalPassengerPrice = feeDetails.totalAmount; // Total amount paid by passenger
+      rideObj.recommendedPricePerSeat = ride.recommendedPricePerSeat || seatPriceDriver;
       rideObj.deposit = 0;
       rideObj.distance = dist;
       return rideObj;
@@ -632,7 +722,7 @@ app.get('/api/rides', async (req, res) => {
 
     // Filter by maxPrice if provided
     if (maxPrice) {
-      rides = rides.filter(ride => ride.price <= parseFloat(maxPrice));
+      rides = rides.filter(ride => ride.totalPassengerPrice <= parseFloat(maxPrice));
     }
 
     res.json(rides);
@@ -651,28 +741,55 @@ app.post('/api/rides', authenticateToken, async (req, res) => {
 
     const {
       stops,
-      departureTime, totalSeats, genderPreference, price
+      departureTime, totalSeats, genderPreference, price,
+      instantBooking, maxTwoInBack, ladiesOnly, luggageSize, amenities, carModel, carColor
     } = req.body;
 
     if (!stops || !Array.isArray(stops) || stops.length < 2) {
       return res.status(400).json({ message: 'Rides must contain at least 2 stops.' });
     }
 
-    if (!price || parseFloat(price) <= 0) {
-      return res.status(400).json({ message: 'Please enter a valid total trip cost.' });
-    }
-
-    // Validate stops
+    // Process dynamic stops (support both strings and {name, lat, lng} objects)
+    const formattedStops = [];
+    const stopDetails = [];
     for (const stop of stops) {
-      if (!LOCAL_PLACES[stop]) {
-        return res.status(400).json({ message: `Invalid stop location: ${stop}` });
+      if (typeof stop === 'object' && stop && stop.name) {
+        formattedStops.push(stop.name);
+        stopDetails.push({
+          name: stop.name,
+          lat: parseFloat(stop.lat || 0),
+          lng: parseFloat(stop.lng || 0)
+        });
+      } else if (typeof stop === 'string' && stop.trim()) {
+        const name = stop.trim();
+        const coords = extractCoords(name) || { lat: 0, lng: 0 };
+        formattedStops.push(name);
+        stopDetails.push({ name, lat: coords.lat, lng: coords.lng });
       }
     }
 
-    const pickupLocation = stops[0];
-    const destination = stops[stops.length - 1];
-    const pickupCoords = LOCAL_PLACES[pickupLocation];
-    const destinationCoords = LOCAL_PLACES[destination];
+    if (stopDetails.length < 2) {
+      return res.status(400).json({ message: 'Please provide at least 2 valid stops for the trip route.' });
+    }
+
+    const vehicleType = user.driverDetails.vehicleType || 'Sedan';
+    const recFare = calculateRecommendedFare(stopDetails, vehicleType, totalSeats);
+
+    const seatPrice = parseFloat(price);
+    if (!seatPrice || isNaN(seatPrice) || seatPrice <= 0) {
+      return res.status(400).json({ message: 'Please enter a valid seat price.' });
+    }
+
+    if (recFare.recPricePerSeat > 0 && (seatPrice < recFare.minAllowedSeatPrice || seatPrice > recFare.maxAllowedSeatPrice)) {
+      return res.status(400).json({
+        message: `Seat price ₹${seatPrice} is outside the allowed BlaBlaCar limits (₹${recFare.minAllowedSeatPrice} - ₹${recFare.maxAllowedSeatPrice}).`
+      });
+    }
+
+    const pickupLocation = stopDetails[0].name;
+    const destination = stopDetails[stopDetails.length - 1].name;
+    const pickupCoords = { lat: stopDetails[0].lat, lng: stopDetails[0].lng };
+    const destinationCoords = { lat: stopDetails[stopDetails.length - 1].lat, lng: stopDetails[stopDetails.length - 1].lng };
 
     const departure = new Date(departureTime);
     const now = new Date();
@@ -687,19 +804,37 @@ app.post('/api/rides', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Rides can only be scheduled from tomorrow up to 5 days in advance.' });
     }
 
+    const totalSeatsNum = parseInt(totalSeats) || 1;
+
     const ride = await Ride.create({
       driver: req.user.id,
       pickupLocation,
       pickupCoords,
       destination,
       destinationCoords,
-      stops,
+      stops: formattedStops,
+      stopDetails: stopDetails,
+      stopoverPoints: formattedStops.slice(1, -1),
       departureTime: departure,
-      price: parseFloat(price),
-      totalSeats: parseInt(totalSeats),
-      availableSeats: parseInt(totalSeats),
-      vehicleType: user.driverDetails.vehicleType || 'Sedan',
+      price: seatPrice * totalSeatsNum,
+      recommendedPricePerSeat: recFare.recPricePerSeat,
+      operatingCostPerKm: recFare.costConfig.totalCostPerKm,
+      totalSeats: totalSeatsNum,
+      availableSeats: totalSeatsNum,
+      vehicleType,
+      carModel: carModel || user.driverDetails.vehicleModel || 'Sedan',
+      carColor: carColor || '',
       genderPreference: genderPreference || 'Any',
+      instantBooking: instantBooking === true || instantBooking === 'true',
+      maxTwoInBack: maxTwoInBack === true || maxTwoInBack === 'true',
+      ladiesOnly: ladiesOnly === true || ladiesOnly === 'true',
+      luggageSize: luggageSize || 'Medium',
+      amenities: amenities || {
+        chatLevel: user.chatPreference || 'BlaBla',
+        smoking: user.smokingAllowed || false,
+        pets: user.petsAllowed || false,
+        music: user.musicPreference || true
+      },
       status: 'pending'
     });
 
@@ -738,12 +873,14 @@ app.get('/api/rides/:id', async (req, res) => {
 // Request booking
 app.post('/api/bookings', authenticateToken, async (req, res) => {
   try {
-    const { rideId, seatsBooked, pickupLocation, destination } = req.body;
+    const { rideId, seatsBooked, pickupLocation, destination, bookingNote } = req.body;
 
     const ride = await Ride.findById(rideId);
     if (!ride) return res.status(404).json({ message: 'Ride not found' });
 
-    if (ride.availableSeats < seatsBooked) {
+    const requestedSeats = parseInt(seatsBooked) || 1;
+
+    if (ride.availableSeats < requestedSeats) {
       return res.status(400).json({ message: 'Not enough seats available' });
     }
 
@@ -775,20 +912,38 @@ app.post('/api/bookings', authenticateToken, async (req, res) => {
 
     const distance = getSegmentDistance(ride.stops, pLoc, dLoc);
     const totalRouteDist = getRouteDistance(ride.stops);
-    const segmentFare = totalRouteDist > 0 ? parseFloat(((distance / totalRouteDist) * ride.price * (parseInt(seatsBooked) || 1)).toFixed(2)) : 0;
+    const seatPriceDriver = ride.totalSeats > 0 ? (ride.price / ride.totalSeats) : ride.price;
+    const segmentBaseFarePerSeat = totalRouteDist > 0 ? parseFloat(((distance / totalRouteDist) * seatPriceDriver).toFixed(2)) : 0;
+    const baseFareTotal = segmentBaseFarePerSeat * requestedSeats;
+    const feeDetails = calculatePassengerServiceFee(baseFareTotal);
     const deposit = 0;
+
+    // Instant Booking auto-approval vs Manual Request
+    const initialStatus = ride.instantBooking ? 'accepted' : 'requested';
 
     const booking = await Booking.create({
       ride: rideId,
       passenger: req.user.id,
       pickupLocation: pLoc,
       destination: dLoc,
-      seatsBooked: parseInt(seatsBooked) || 1,
-      status: 'requested',
+      seatsBooked: requestedSeats,
+      passengersCount: requestedSeats,
+      bookingNote: bookingNote || '',
+      status: initialStatus,
       otp,
-      fare: segmentFare,
-      deposit
+      fare: feeDetails.baseFare,
+      baseFare: feeDetails.baseFare,
+      serviceFee: feeDetails.serviceFee,
+      totalAmount: feeDetails.totalAmount,
+      deposit,
+      assignedDriver: ride.instantBooking ? ride.driver : undefined,
+      acceptedAt: ride.instantBooking ? new Date() : undefined
     });
+
+    if (ride.instantBooking) {
+      ride.availableSeats -= requestedSeats;
+      await ride.save();
+    }
 
     res.status(201).json(booking);
   } catch (error) {

@@ -20,6 +20,12 @@ export default function DriverDashboard({ token, activeUser }) {
   const [departureTime, setDepartureTime] = useState('');
   const [price, setPrice] = useState('');
   const [totalSeats, setTotalSeats] = useState(3);
+  const [instantBooking, setInstantBooking] = useState(false);
+  const [ladiesOnly, setLadiesOnly] = useState(false);
+  const [maxTwoInBack, setMaxTwoInBack] = useState(true);
+  const [luggageSize, setLuggageSize] = useState('Medium');
+  const [chatLevel, setChatLevel] = useState('BlaBla');
+  const [petsAllowed, setPetsAllowed] = useState(false);
   
   // States
   const [driverBookings, setDriverBookings] = useState([]);
@@ -47,7 +53,19 @@ export default function DriverDashboard({ token, activeUser }) {
     return R * c;
   };
 
-  // Auto-calculate fare based on actual stops route distance and fixed rate of ₹3/km
+  const VEHICLE_OPERATING_COSTS = {
+    'Hatchback': { fuelCost: 3.5, wearCost: 1.0, totalRate: 4.5 },
+    'Sedan':     { fuelCost: 4.5, wearCost: 1.5, totalRate: 6.0 },
+    'SUV':       { fuelCost: 6.0, wearCost: 2.0, totalRate: 8.0 },
+    'Electric':  { fuelCost: 1.5, wearCost: 1.0, totalRate: 2.5 }
+  };
+
+  const [recommendedSeatPrice, setRecommendedSeatPrice] = useState(0);
+  const [minSeatPrice, setMinSeatPrice] = useState(0);
+  const [maxSeatPrice, setMaxSeatPrice] = useState(0);
+  const [routeDist, setRouteDist] = useState(0);
+
+  // Auto-calculate BlaBlaCar recommended fare based on distance & vehicle operating costs
   useEffect(() => {
     let totalDist = 0;
     let isValid = true;
@@ -61,11 +79,27 @@ export default function DriverDashboard({ token, activeUser }) {
       }
     }
     if (isValid && stops.length >= 2) {
-      setPrice((totalDist * 3.0).toFixed(2));
+      const vehicleType = activeUser?.driverDetails?.vehicleType || 'Sedan';
+      const costInfo = VEHICLE_OPERATING_COSTS[vehicleType] || VEHICLE_OPERATING_COSTS['Sedan'];
+      const totalTripCost = totalDist * costInfo.totalRate;
+      const seats = Math.max(1, parseInt(totalSeats) || 1);
+      const recPrice = parseFloat((totalTripCost / seats).toFixed(2));
+      const minP = parseFloat((0.80 * recPrice).toFixed(2));
+      const maxP = parseFloat((1.20 * recPrice).toFixed(2));
+
+      setRouteDist(totalDist);
+      setRecommendedSeatPrice(recPrice);
+      setMinSeatPrice(minP);
+      setMaxSeatPrice(maxP);
+      setPrice(recPrice.toString());
     } else {
+      setRouteDist(0);
+      setRecommendedSeatPrice(0);
+      setMinSeatPrice(0);
+      setMaxSeatPrice(0);
       setPrice('');
     }
-  }, [stops]);
+  }, [stops, totalSeats, activeUser?.driverDetails?.vehicleType]);
 
   const getTomorrowString = () => {
     const tomorrow = new Date();
@@ -122,17 +156,13 @@ export default function DriverDashboard({ token, activeUser }) {
       return;
     }
 
-    for (const stop of stops) {
-      if (!stop || !LOCAL_PLACES[stop]) {
-        setError('Please select valid locations for all stops.');
+    const formattedStops = stops.map(s => typeof s === 'object' ? s : { name: s, lat: 0, lng: 0 });
+
+    for (const stop of formattedStops) {
+      if (!stop || !stop.name || !stop.name.trim()) {
+        setError('Please enter valid city or location names for all stops.');
         return;
       }
-    }
-
-    const uniqueStops = new Set(stops);
-    if (uniqueStops.size !== stops.length) {
-      setError('Route cannot contain duplicate stops.');
-      return;
     }
 
     try {
@@ -143,10 +173,20 @@ export default function DriverDashboard({ token, activeUser }) {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          stops,
+          stops: formattedStops,
           departureTime,
           price: parseFloat(price),
-          totalSeats: parseInt(totalSeats)
+          totalSeats: parseInt(totalSeats),
+          instantBooking,
+          maxTwoInBack,
+          ladiesOnly,
+          luggageSize,
+          amenities: {
+            chatLevel,
+            smoking: false,
+            pets: petsAllowed,
+            music: true
+          }
         })
       });
 
@@ -604,22 +644,21 @@ export default function DriverDashboard({ token, activeUser }) {
                   </label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <MapPin size={16} style={{ position: 'absolute', left: '12px', color: index === 0 ? 'var(--primary)' : (index === stops.length - 1 ? 'var(--secondary)' : 'var(--accent)'), zIndex: 10 }} />
-                    <select
+                    <input
+                      type="text"
                       required
-                      value={stop}
+                      placeholder={`Enter ${label.toLowerCase()} (e.g. Kasaragod, Bangalore, Mumbai)`}
+                      value={typeof stop === 'object' ? (stop.name || '') : stop}
                       onChange={(e) => {
                         const updated = [...stops];
-                        updated[index] = e.target.value;
+                        const val = e.target.value;
+                        const coords = LOCAL_PLACES[val] || { lat: 0, lng: 0 };
+                        updated[index] = { name: val, lat: coords.lat, lng: coords.lng };
                         setStops(updated);
                       }}
                       className="form-input"
                       style={{ paddingLeft: '38px' }}
-                    >
-                      <option value="">Select Stop Location</option>
-                      {Object.keys(LOCAL_PLACES).map(place => (
-                        <option key={place} value={place}>{place}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
               );
@@ -669,24 +708,7 @@ export default function DriverDashboard({ token, activeUser }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Total Trip Cost (for complete route)</label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '10px', color: 'var(--text-light)', fontSize: '12px', fontWeight: 'bold' }}>₹</span>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    placeholder="E.g. 500"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="form-input"
-                    style={{ paddingLeft: '28px' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Seats Available</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Seats Offered</label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <Users size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-light)' }} />
                   <select
@@ -695,14 +717,184 @@ export default function DriverDashboard({ token, activeUser }) {
                     className="form-input"
                     style={{ paddingLeft: '28px' }}
                   >
-                    {[1, 2, 3, 4, 5, 6].map(num => (
-                      <option key={num} value={num}>{num}</option>
+                    {[1, 2, 3, 4].map(num => (
+                      <option key={num} value={num}>{num} {num === 1 ? 'Seat' : 'Seats'}</option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Seat Fare (₹) <span style={{ color: 'var(--primary)', fontSize: '11px' }}>(±20% Limit)</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curr = parseFloat(price) || recommendedSeatPrice;
+                      const next = Math.max(minSeatPrice, parseFloat((curr - 5).toFixed(2)));
+                      setPrice(next.toString());
+                    }}
+                    disabled={parseFloat(price) <= minSeatPrice}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-primary)',
+                      cursor: parseFloat(price) <= minSeatPrice ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '14px'
+                    }}
+                  >
+                    -
+                  </button>
+
+                  <input
+                    type="number"
+                    required
+                    min={minSeatPrice}
+                    max={maxSeatPrice}
+                    step="1"
+                    value={price}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (isNaN(val)) setPrice(e.target.value);
+                      else setPrice(val.toString());
+                    }}
+                    className="form-input"
+                    style={{ textAlign: 'center', fontWeight: '700', fontSize: '15px' }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curr = parseFloat(price) || recommendedSeatPrice;
+                      const next = Math.min(maxSeatPrice, parseFloat((curr + 5).toFixed(2)));
+                      setPrice(next.toString());
+                    }}
+                    disabled={parseFloat(price) >= maxSeatPrice}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-primary)',
+                      cursor: parseFloat(price) >= maxSeatPrice ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '14px'
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
 
+            {/* BlaBlaCar Fare Recommendation Callout */}
+            {recommendedSeatPrice > 0 && (
+              <div style={{
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                fontSize: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--success)' }}>
+                    💡 BlaBlaCar Recommended: ₹{recommendedSeatPrice.toFixed(2)} / seat
+                  </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    Route: {routeDist.toFixed(1)} km
+                  </span>
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
+                  Operating Cost Rate: ₹{(VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate || 6.0)}/km ({activeUser?.driverDetails?.vehicleType || 'Sedan'}) | Allowed Range: <b>₹{minSeatPrice.toFixed(2)}</b> – <b>₹{maxSeatPrice.toFixed(2)}</b>
+                </div>
+              </div>
+            )}
+
+            {/* BlaBlaCar Specific Options */}
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase' }}>
+                BlaBlaCar Carpool Preferences
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Luggage Capacity</label>
+                  <select
+                    value={luggageSize}
+                    onChange={(e) => setLuggageSize(e.target.value)}
+                    className="form-input"
+                    style={{ fontSize: '13px', padding: '8px' }}
+                  >
+                    <option value="Small">Small (Handbag)</option>
+                    <option value="Medium">Medium (Suitcase)</option>
+                    <option value="Large">Large (Big Bag)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Chattiness Preference</label>
+                  <select
+                    value={chatLevel}
+                    onChange={(e) => setChatLevel(e.target.value)}
+                    className="form-input"
+                    style={{ fontSize: '13px', padding: '8px' }}
+                  >
+                    <option value="Quiet">Quiet 🔇</option>
+                    <option value="Bla">Bla 💬</option>
+                    <option value="BlaBla">BlaBla 💬💬</option>
+                    <option value="BlaBlaBla">BlaBlaBla 💬💬💬</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={instantBooking}
+                    onChange={(e) => setInstantBooking(e.target.checked)}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  <span>Instant Booking ⚡</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={ladiesOnly}
+                    onChange={(e) => setLadiesOnly(e.target.checked)}
+                    style={{ accentColor: '#ec4899' }}
+                  />
+                  <span>Ladies Only 🌸</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={maxTwoInBack}
+                    onChange={(e) => setMaxTwoInBack(e.target.checked)}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  <span>Max 2 in back seat 👥</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={petsAllowed}
+                    onChange={(e) => setPetsAllowed(e.target.checked)}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  <span>Pets Allowed 🐾</span>
+                </label>
+              </div>
+            </div>
 
             <button
               type="submit"

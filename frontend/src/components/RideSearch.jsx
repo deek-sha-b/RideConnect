@@ -34,7 +34,10 @@ export default function RideSearch({ onBookRide, activeUser }) {
   const [maxPrice, setMaxPrice] = useState('');
   const [vehicleType, setVehicleType] = useState('Any');
   const [genderPreference, setGenderPreference] = useState('Any');
-  
+  const [instantBooking, setInstantBooking] = useState(false);
+  const [ladiesOnly, setLadiesOnly] = useState(false);
+  const [maxTwoInBack, setMaxTwoInBack] = useState(false);
+
   // Results
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -49,6 +52,9 @@ export default function RideSearch({ onBookRide, activeUser }) {
       if (maxPrice) url += `&maxPrice=${maxPrice}`;
       if (vehicleType !== 'Any') url += `&vehicleType=${vehicleType}`;
       if (genderPreference !== 'Any') url += `&genderPreference=${genderPreference}`;
+      if (instantBooking) url += `&instantBooking=true`;
+      if (ladiesOnly) url += `&ladiesOnly=true`;
+      if (maxTwoInBack) url += `&maxTwoInBack=true`;
 
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch rides');
@@ -75,10 +81,10 @@ export default function RideSearch({ onBookRide, activeUser }) {
     <div style={{ padding: '20px 0 60px 0' }} id="find">
       <div className="container">
         <h2 style={{ fontSize: '32px', marginBottom: '8px', textAlign: 'center' }}>
-          Find Your <span className="gradient-text">Perfect Ride</span>
+          Find Your <span className="gradient-text">BlaBlaCar Ride</span>
         </h2>
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '30px' }}>
-          Compare prices, vehicle types, and driver ratings to choose the best option.
+          Compare prices, stopovers, instant booking ⚡, and driver preferences for a smooth carpool.
         </p>
 
         {/* Search Bar Form */}
@@ -100,33 +106,27 @@ export default function RideSearch({ onBookRide, activeUser }) {
             {/* Pickup */}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <MapPin size={18} style={{ position: 'absolute', left: '12px', color: 'var(--primary)', zIndex: 10 }} />
-              <select
+              <input
+                type="text"
+                placeholder="Leaving from (e.g. Kasaragod, Bangalore, Mumbai)"
                 value={pickup}
                 onChange={(e) => setPickup(e.target.value)}
                 className="form-input"
                 style={{ paddingLeft: '40px' }}
-              >
-                <option value="">Pickup Location</option>
-                {Object.keys(LOCAL_PLACES).map(place => (
-                  <option key={place} value={place}>{place}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Destination */}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <MapPin size={18} style={{ position: 'absolute', left: '12px', color: 'var(--secondary)', zIndex: 10 }} />
-              <select
+              <input
+                type="text"
+                placeholder="Going to (e.g. Mangalore, Goa, Delhi)"
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
                 className="form-input"
                 style={{ paddingLeft: '40px' }}
-              >
-                <option value="">Destination</option>
-                {Object.keys(LOCAL_PLACES).map(place => (
-                  <option key={place} value={place}>{place}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Date */}
@@ -152,8 +152,8 @@ export default function RideSearch({ onBookRide, activeUser }) {
                 className="form-input"
                 style={{ paddingLeft: '40px' }}
               >
-                {[1, 2, 3, 4, 5, 6].map(num => (
-                  <option key={num} value={num}>{num} {num === 1 ? 'Seat' : 'Seats'}</option>
+                {[1, 2, 3, 4].map(num => (
+                  <option key={num} value={num}>{num} {num === 1 ? 'Passenger' : 'Passengers'}</option>
                 ))}
               </select>
             </div>
@@ -190,7 +190,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
               onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
             >
               <SlidersHorizontal size={16} />
-              <span>Filters {showFilters ? '(Hide)' : ''}</span>
+              <span>BlaBlaCar Filters {showFilters ? '(Hide)' : ''}</span>
             </button>
 
             <button
@@ -199,7 +199,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
               style={{ padding: '12px 28px', fontSize: '15px', gap: '8px' }}
             >
               <Search size={16} />
-              Search Rides
+              Search Carpools
             </button>
           </div>
 
@@ -207,7 +207,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
           {showFilters && (
             <div className="animate-fade-in" style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: '16px',
               padding: '16px',
               borderRadius: '8px',
@@ -221,7 +221,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
                   <span style={{ position: 'absolute', left: '10px', color: 'var(--text-light)', fontSize: '12px', fontWeight: 'bold' }}>₹</span>
                   <input
                     type="number"
-                    placeholder="E.g. 100"
+                    placeholder="E.g. 500"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
                     className="form-input"
@@ -230,34 +230,43 @@ export default function RideSearch({ onBookRide, activeUser }) {
                 </div>
               </div>
 
-              {/* Vehicle Type */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Vehicle Class</label>
-                <select
-                  value={vehicleType}
-                  onChange={(e) => setVehicleType(e.target.value)}
-                  className="form-input"
-                >
-                  <option value="Any">Any Vehicle</option>
-                  <option value="Sedan">Sedan</option>
-                  <option value="Hatchback">Hatchback</option>
-                  <option value="SUV">SUV</option>
-                  <option value="Electric">Electric</option>
-                </select>
+              {/* Instant Booking Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={instantBooking}
+                    onChange={(e) => setInstantBooking(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                  />
+                  <span>Instant Booking ⚡</span>
+                </label>
               </div>
 
-              {/* Gender Preference */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Gender Preference</label>
-                <select
-                  value={genderPreference}
-                  onChange={(e) => setGenderPreference(e.target.value)}
-                  className="form-input"
-                >
-                  <option value="Any">Any Gender</option>
-                  <option value="Male Only">Male Only</option>
-                  <option value="Female Only">Female Only</option>
-                </select>
+              {/* Ladies Only Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={ladiesOnly}
+                    onChange={(e) => setLadiesOnly(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: '#ec4899' }}
+                  />
+                  <span>Ladies Only 🌸</span>
+                </label>
+              </div>
+
+              {/* Max 2 in back */}
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={maxTwoInBack}
+                    onChange={(e) => setMaxTwoInBack(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                  />
+                  <span>Max 2 in back seat 👥</span>
+                </label>
               </div>
             </div>
           )}
@@ -354,10 +363,12 @@ export default function RideSearch({ onBookRide, activeUser }) {
                   </div>
 
                   <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                    <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)', fontFamily: 'var(--font-heading)' }}>
-                      ₹{ride.price.toFixed(2)}
+                    <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--primary)', fontFamily: 'var(--font-heading)' }}>
+                      ₹{(ride.totalPassengerPrice || ride.price || 0).toFixed(2)}
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>per seat</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
+                      ₹{(ride.price || 0).toFixed(2)} seat + ₹{(ride.serviceFee || 15)} fee
+                    </span>
                   </div>
                 </div>
                 {/* Ride route sequential timeline */}

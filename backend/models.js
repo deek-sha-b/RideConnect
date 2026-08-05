@@ -10,6 +10,12 @@ const UserSchema = new mongoose.Schema({
   rating: { type: Number, default: 0 },
   ratingCount: { type: Number, default: 0 },
   favoriteLocations: { type: [String], default: [] },
+  bio: { type: String, default: '' },
+  chatPreference: { type: String, enum: ['Quiet', 'Bla', 'BlaBla', 'BlaBlaBla'], default: 'BlaBla' },
+  musicPreference: { type: Boolean, default: true },
+  petsAllowed: { type: Boolean, default: false },
+  smokingAllowed: { type: Boolean, default: false },
+  ladiesOnlyPref: { type: Boolean, default: false },
   driverDetails: {
     licenseNo: { type: String, default: '' },
     licenseUrl: { type: String, default: '' },
@@ -38,13 +44,33 @@ const RideSchema = new mongoose.Schema({
     lat: { type: Number, required: true },
     lng: { type: Number, required: true }
   },
-  stops: { type: [String], required: true, default: [] },
+  stops: { type: [mongoose.Schema.Types.Mixed], required: true, default: [] },
+  stopDetails: [{
+    name: { type: String, default: '' },
+    lat: { type: Number, default: 0 },
+    lng: { type: Number, default: 0 }
+  }],
+  stopoverPoints: { type: [String], default: [] },
   departureTime: { type: Date, required: true },
   price: { type: Number, required: true },
+  recommendedPricePerSeat: { type: Number, default: 0 },
+  operatingCostPerKm: { type: Number, default: 6.0 },
   totalSeats: { type: Number, required: true },
   availableSeats: { type: Number, required: true },
   vehicleType: { type: String, default: 'Sedan' },
+  carModel: { type: String, default: '' },
+  carColor: { type: String, default: '' },
   genderPreference: { type: String, enum: ['Any', 'Male Only', 'Female Only'], default: 'Any' },
+  instantBooking: { type: Boolean, default: false },
+  maxTwoInBack: { type: Boolean, default: true },
+  ladiesOnly: { type: Boolean, default: false },
+  luggageSize: { type: String, enum: ['Small', 'Medium', 'Large'], default: 'Medium' },
+  amenities: {
+    chatLevel: { type: String, enum: ['Quiet', 'Bla', 'BlaBla', 'BlaBlaBla'], default: 'BlaBla' },
+    smoking: { type: Boolean, default: false },
+    pets: { type: Boolean, default: false },
+    music: { type: Boolean, default: true }
+  },
   status: { type: String, enum: ['pending', 'active', 'completed', 'cancelled'], default: 'pending' }
 }, { timestamps: true });
 
@@ -53,6 +79,8 @@ const BookingSchema = new mongoose.Schema({
   ride: { type: mongoose.Schema.Types.ObjectId, ref: 'Ride', required: true },
   passenger: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   seatsBooked: { type: Number, default: 1 },
+  passengersCount: { type: Number, default: 1 },
+  bookingNote: { type: String, default: '' },
   status: { type: String, enum: ['requested', 'accepted', 'rejected', 'started', 'completed', 'cancelled'], default: 'requested' },
   otp: { type: String },
   assignedDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -60,6 +88,9 @@ const BookingSchema = new mongoose.Schema({
   pickupLocation: { type: String },
   destination: { type: String },
   fare: { type: Number },
+  baseFare: { type: Number, default: 0 },
+  serviceFee: { type: Number, default: 0 },
+  totalAmount: { type: Number, default: 0 },
   deposit: { type: Number },
   ratingToDriver: { type: Number, default: 0 },
   ratingToPassenger: { type: Number, default: 0 },
