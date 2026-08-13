@@ -91,12 +91,12 @@ function getSegmentDistance(stops, pickup, destination) {
   return dist;
 }
 
-// BlaBlaCar Vehicle Operating Costs & Service Fee Configuration
+// Vehicle Operating Costs & Service Fee Configuration
 const VEHICLE_OPERATING_COSTS = {
   'Hatchback': { fuelCostPerKm: 3.5, wearCostPerKm: 1.0, totalCostPerKm: 4.5 },
-  'Sedan':     { fuelCostPerKm: 4.5, wearCostPerKm: 1.5, totalCostPerKm: 6.0 },
-  'SUV':       { fuelCostPerKm: 6.0, wearCostPerKm: 2.0, totalCostPerKm: 8.0 },
-  'Electric':  { fuelCostPerKm: 1.5, wearCostPerKm: 1.0, totalCostPerKm: 2.5 }
+  'Sedan': { fuelCostPerKm: 4.5, wearCostPerKm: 1.5, totalCostPerKm: 6.0 },
+  'SUV': { fuelCostPerKm: 6.0, wearCostPerKm: 2.0, totalCostPerKm: 8.0 },
+  'Electric': { fuelCostPerKm: 1.5, wearCostPerKm: 1.0, totalCostPerKm: 2.5 }
 };
 const SERVICE_FEE_PERCENTAGE = 0.12; // 12% passenger booking fee
 const MIN_SERVICE_FEE = 15; // ₹15 minimum fee
@@ -105,13 +105,15 @@ function calculateRecommendedFare(stops, vehicleType, totalSeats) {
   const totalDist = getRouteDistance(stops);
   const costConfig = VEHICLE_OPERATING_COSTS[vehicleType] || VEHICLE_OPERATING_COSTS['Sedan'];
   const totalTripCost = totalDist * costConfig.totalCostPerKm;
-  const seats = Math.max(1, parseInt(totalSeats) || 1);
-  const recPricePerSeat = parseFloat((totalTripCost / seats).toFixed(2));
-  
+  const passengerSeats = Math.max(1, parseInt(totalSeats) || 1);
+  const totalOccupants = passengerSeats + 1; // 1 Driver + Passenger Seats
+  const recPricePerSeat = parseFloat((totalTripCost / totalOccupants).toFixed(2));
+
   return {
     totalDist,
     costConfig,
     totalTripCost,
+    totalOccupants,
     recPricePerSeat,
     minAllowedSeatPrice: parseFloat((0.80 * recPricePerSeat).toFixed(2)),
     maxAllowedSeatPrice: parseFloat((1.20 * recPricePerSeat).toFixed(2))
@@ -523,19 +525,19 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { token } = req.body;
-    
+
     // Verify the Firebase ID token
     const decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
     const { email, name, picture } = decodedToken;
-    
+
     // Check if user exists
     let user = await User.findOne({ email });
-    
+
     if (!user) {
       // Create a new user with dummy password (since they use Google Auth)
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-8), salt);
-      
+
       user = await User.create({
         name: name || 'Google User',
         email,
@@ -782,7 +784,7 @@ app.post('/api/rides', authenticateToken, async (req, res) => {
 
     if (recFare.recPricePerSeat > 0 && (seatPrice < recFare.minAllowedSeatPrice || seatPrice > recFare.maxAllowedSeatPrice)) {
       return res.status(400).json({
-        message: `Seat price ₹${seatPrice} is outside the allowed BlaBlaCar limits (₹${recFare.minAllowedSeatPrice} - ₹${recFare.maxAllowedSeatPrice}).`
+        message: `Seat price ₹${seatPrice} is outside the allowed limits (₹${recFare.minAllowedSeatPrice} - ₹${recFare.maxAllowedSeatPrice}).`
       });
     }
 

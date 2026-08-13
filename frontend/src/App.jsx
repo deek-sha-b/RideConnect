@@ -15,10 +15,10 @@ import { motion } from 'framer-motion';
 
 const scrollRevealVariants = {
   hidden: { opacity: 0, y: 40 },
-  visible: { 
-    opacity: 1, 
-    y: 0, 
-    transition: { duration: 0.6, ease: 'easeOut' } 
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: 'easeOut' }
   }
 };
 
@@ -38,20 +38,21 @@ function ScrollReveal({ children, style }) {
 
 export default function App() {
   const [theme, setTheme] = useState('light');
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('find');
+  const [roleTab, setRoleTab] = useState('overview');
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
-  
+
   // Auth state
   const [authInitialMode, setAuthInitialMode] = useState('login');
-  
+
   // Contact Us state & validations
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [contactErrors, setContactErrors] = useState({});
-  
+
   // Booking confirmation states
   const [selectedRideForBooking, setSelectedRideForBooking] = useState(null);
   const [bookingPickup, setBookingPickup] = useState('');
@@ -60,7 +61,6 @@ export default function App() {
   const [bookingNote, setBookingNote] = useState('');
   const [bookingStatusMsg, setBookingStatusMsg] = useState('');
   const [bookingError, setBookingError] = useState('');
-  
 
 
   // Auto-restore session from localStorage on mount
@@ -68,56 +68,32 @@ export default function App() {
     const savedUser = localStorage.getItem('rc_user');
     const savedToken = localStorage.getItem('rc_token');
     const savedTheme = localStorage.getItem('rc_theme') || 'light';
-    
+
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
 
     if (savedUser && savedToken) {
-      setUser(JSON.parse(savedUser));
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
       setToken(savedToken);
+      if (parsedUser.role === 'passenger') {
+        setRoleTab('my-rides');
+      } else if (parsedUser.role === 'driver') {
+        setRoleTab('overview');
+      } else if (parsedUser.role === 'admin') {
+        setRoleTab('admin');
+      }
       // Fetch latest profile status
       fetchLatestProfile(savedToken);
     }
   }, []);
 
-  // Role-based route/tab protection and redirection
+  // Role-based route protection
   useEffect(() => {
-    const publicTabs = ['home', 'find', 'offer', 'about', 'contact', 'login'];
-
     if (!user) {
-      // Guest users: only public tabs allowed
+      const publicTabs = ['find', 'about', 'contact', 'login'];
       if (!publicTabs.includes(activeTab)) {
-        setActiveTab('home');
-      }
-    } else {
-      // Logged-in users: Login page is not accessible
-      if (activeTab === 'login') {
-        if (user.role === 'admin') {
-          setActiveTab('admin');
-        } else if (user.role === 'driver') {
-          setActiveTab('driver-dashboard');
-        } else {
-          setActiveTab('passenger-dashboard');
-        }
-        return;
-      }
-
-      // Restrict access to private dashboard tabs based on role
-      if (user.role === 'admin') {
-        const adminAllowedTabs = ['home', 'find', 'offer', 'about', 'contact', 'admin'];
-        if (!adminAllowedTabs.includes(activeTab)) {
-          setActiveTab('admin');
-        }
-      } else if (user.role === 'driver') {
-        const driverAllowedTabs = ['home', 'find', 'offer', 'about', 'contact', 'driver-dashboard'];
-        if (!driverAllowedTabs.includes(activeTab)) {
-          setActiveTab('driver-dashboard');
-        }
-      } else if (user.role === 'passenger') {
-        const passengerAllowedTabs = ['home', 'find', 'offer', 'about', 'contact', 'passenger-dashboard'];
-        if (!passengerAllowedTabs.includes(activeTab)) {
-          setActiveTab('passenger-dashboard');
-        }
+        setActiveTab('find');
       }
     }
   }, [activeTab, user]);
@@ -143,14 +119,14 @@ export default function App() {
     localStorage.setItem('rc_user', JSON.stringify(userData));
     localStorage.setItem('rc_token', sessionToken);
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    
+
     // Redirect based on role
     if (userData.role === 'admin') {
-      setActiveTab('admin');
+      setRoleTab('admin');
     } else if (userData.role === 'driver') {
-      setActiveTab('driver-dashboard');
+      setRoleTab('overview');
     } else {
-      setActiveTab('passenger-dashboard');
+      setRoleTab('my-rides');
     }
   };
 
@@ -159,7 +135,8 @@ export default function App() {
     setToken('');
     localStorage.removeItem('rc_user');
     localStorage.removeItem('rc_token');
-    setActiveTab('login');
+    setActiveTab('find');
+    setRoleTab('overview');
   };
 
   const handleBookRideClick = (ride, pickup, destination) => {
@@ -216,13 +193,13 @@ export default function App() {
     if (!selectedRideForBooking || !selectedRideForBooking.stops) return 0;
     const fromLoc = startLoc || bookingPickup || selectedRideForBooking.pickupLocation;
     const toLoc = endLoc || bookingDestination || selectedRideForBooking.destination;
-    
+
     const stops = selectedRideForBooking.stops;
     const stopNames = stops.map(s => typeof s === 'object' ? (s.name || '') : s);
     const startIdx = stopNames.indexOf(fromLoc);
     const endIdx = stopNames.indexOf(toLoc);
     if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) return 0;
-    
+
     const LOCAL_PLACES = {
       'Kasaragod': { lat: 12.4984, lng: 74.9896 },
       'Puttur': { lat: 12.7623, lng: 75.2003 },
@@ -239,7 +216,7 @@ export default function App() {
       const name = typeof s === 'object' ? s.name : s;
       return LOCAL_PLACES[name] || { lat: 12.5, lng: 75.0 };
     };
-    
+
     const getHaversine = (l1, l2) => {
       const c1 = extractPointCoords(l1);
       const c2 = extractPointCoords(l2);
@@ -247,17 +224,17 @@ export default function App() {
       const R = 6371;
       const dLat = (c2.lat - c1.lat) * Math.PI / 180;
       const dLng = (c2.lng - c1.lng) * Math.PI / 180;
-      const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
-        Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     };
-    
+
     let totalDist = 0;
     for (let i = startIdx; i < endIdx; i++) {
-      totalDist += getHaversine(stops[i], stops[i+1]);
+      totalDist += getHaversine(stops[i], stops[i + 1]);
     }
     return totalDist;
   };
@@ -304,10 +281,10 @@ export default function App() {
 
       setBookingStatusMsg('Booking requested successfully! You can track this trip in your Bookings Dashboard.');
       confetti({ particleCount: 80, spread: 60 });
-      
+
       // Refresh user details to reload active ride details
       fetchLatestProfile(token);
-      
+
       setTimeout(() => {
         setSelectedRideForBooking(null);
         setActiveTab('passenger-dashboard');
@@ -319,11 +296,11 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      
+
       {/* 1. Header Navigation */}
-      <Navbar 
-        user={user} 
-        onLogout={handleLogout} 
+      <Navbar
+        user={user}
+        onLogout={handleLogout}
         onOpenAuth={(mode) => {
           setAuthInitialMode(mode);
           setActiveTab('login');
@@ -333,8 +310,10 @@ export default function App() {
           setTheme(t);
           localStorage.setItem('rc_theme', t);
         }}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeRoleTab={roleTab}
+        onRoleTabChange={(t) => setRoleTab(t)}
+        activePublicTab={activeTab}
+        onPublicTabChange={(t) => setActiveTab(t)}
       />
 
       {/* Booking confirmation Overlay Dialog */}
@@ -359,7 +338,7 @@ export default function App() {
               width: '100%', maxWidth: '420px', border: '1px solid var(--border-color)'
             }}>
               <h3 style={{ fontSize: '20px', marginBottom: '12px' }}>Confirm Booking</h3>
-              
+
               {bookingStatusMsg ? (
                 <div style={{ color: 'var(--success)', fontWeight: '600', textAlign: 'center', padding: '20px 0' }}>
                   {bookingStatusMsg}
@@ -503,312 +482,14 @@ export default function App() {
 
       {/* Main content body */}
       <main style={{ flex: 1 }}>
-        {activeTab === 'login' && !user && (
-          <AuthPage 
-            initialMode={authInitialMode}
-            onAuthSuccess={handleAuthSuccess}
-          />
-        )}
-            {/* HOMEPAGE VIEW */}
-            {activeTab === 'home' && (
+        {user ? (
           <>
-            <Hero 
-              onFindRide={() => setActiveTab('find')} 
-              onOfferRide={() => setActiveTab('offer')} 
-            />
-            
-            {/* Embedded Ride Search on Home */}
-            <ScrollReveal style={{ marginTop: '80px', marginBottom: '40px' }}>
-              <RideSearch onBookRide={handleBookRideClick} activeUser={user} />
-            </ScrollReveal>
-
-            {/* How It Works Section */}
-            <ScrollReveal>
-              <section className="section-spacer" style={{ background: 'var(--bg-secondary)' }} id="how-it-works">
-                <div className="container" style={{ textAlign: 'center' }}>
-                  <h2 style={{ fontSize: '32px', marginBottom: '12px' }}>How <span className="gradient-text">It Works</span></h2>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '40px' }}>Start sharing trips in three easy steps.</p>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                    <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>1</div>
-                      <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Search a Ride</h3>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Enter your origin, destination, and travel date. Filter by price, vehicle class, or driver gender.</p>
-                    </div>
-
-                    <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>2</div>
-                      <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Book & Verify OTP</h3>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Select a verified driver and request seats. Share the start OTP code when boarding for maximum safety.</p>
-                    </div>
-
-                    <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>3</div>
-                      <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Travel & Save</h3>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Enjoy a comfortable ride, share costs with friendly travelers, and reduce carbon footprint together!</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </ScrollReveal>
-
-            {/* Why Choose Us Section */}
-            <ScrollReveal>
-              <section className="section-spacer" id="why-us">
-                <div className="container">
-                  <h2 style={{ fontSize: '32px', marginBottom: '12px', textAlign: 'center' }}>Why Choose <span className="gradient-text">RideConnect</span></h2>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '40px', textAlign: 'center' }}>Your safety and comfort is our highest priority.</p>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-                    <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
-                      <Shield size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      <div>
-                        <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>100% Verified Profile</h4>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Driving license, vehicle papers, and government IDs are audited manually by admins.</p>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
-                      <Map size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      <div>
-                        <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Live Map Tracking</h4>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Monitor pickup pins, drops, and driver location updates in real-time on our responsive map.</p>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
-                      <Clock size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      <div>
-                        <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Affordable Pricing</h4>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Carpooling cuts your fuel budget by up to 75% while making travel cheaper for everyone.</p>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
-                      <Heart size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      <div>
-                        <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Eco-Friendly Travels</h4>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Fewer empty cars on road means less carbon emissions. Make a green choice today.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </ScrollReveal>
-
-
-
-            {/* FAQs Accordion */}
-            <ScrollReveal>
-              <section className="section-spacer" style={{ background: 'var(--bg-secondary)' }} id="faqs">
-                <div className="container" style={{ maxWidth: '800px' }}>
-                  <h2 style={{ fontSize: '32px', marginBottom: '12px', textAlign: 'center' }}>Frequently Asked <span className="gradient-text">Questions</span></h2>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '40px', textAlign: 'center' }}>Got questions? We've got answers.</p>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>How is driver verification handled?</h4>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>Drivers must upload a valid driving license, government photo ID, vehicle registration certificate, and insurance. The admin checks these manually before allowing the driver to publish rides.</p>
-                    </div>
-                    
-                    <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>What is the start OTP safety code?</h4>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>When a passenger books a seat, the system generates a secure 4-digit OTP. The passenger provides this code to the driver upon boarding. The driver inputs this to start the trip, verifying the correct passenger has entered the vehicle.</p>
-                    </div>
-
-                    <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>What is the Emergency SOS button?</h4>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>If a passenger or driver feels unsafe during a trip, they can click the SOS button in their active dashboard. This sends an immediate notification containing live coordinates to our admin dispatch team and copies details to emergency contacts.</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </ScrollReveal>
-
-            {/* Contact Us Section */}
-            <ScrollReveal>
-              <section className="section-spacer" id="contact">
-                <div className="container" style={{ maxWidth: '600px' }}>
-                  <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
-                    <h2 style={{ fontSize: '28px', marginBottom: '8px', textAlign: 'center' }}>Contact <span className="gradient-text">Us</span></h2>
-                    <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '24px', fontSize: '14px' }}>Questions, feedback, or complaints? Reach out and we'll reply shortly.</p>
-
-                    {contactSubmitted ? (
-                      <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                        <CheckCircle size={48} style={{ color: 'var(--success)', marginBottom: '12px' }} />
-                        <h4 style={{ fontSize: '18px', marginBottom: '6px' }}>Message Sent!</h4>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Thank you for writing to us. Our support agent will check your ticket shortly.</p>
-                      </div>
-                    ) : (
-                      <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} noValidate>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Your Name</label>
-                          <input 
-                            type="text" 
-                            required 
-                            placeholder="John Doe" 
-                            className="form-input" 
-                            value={contactName} 
-                            onChange={(e) => setContactName(e.target.value)}
-                            style={{ borderColor: contactErrors.name ? 'var(--danger)' : 'var(--border-color)' }}
-                          />
-                          {contactErrors.name && (
-                            <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
-                              {contactErrors.name}
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Email Address</label>
-                          <input 
-                            type="email" 
-                            required 
-                            placeholder="john@example.com" 
-                            className="form-input" 
-                            value={contactEmail}
-                            onChange={(e) => setContactEmail(e.target.value)}
-                            style={{ borderColor: contactErrors.email ? 'var(--danger)' : 'var(--border-color)' }}
-                          />
-                          {contactErrors.email && (
-                            <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
-                              {contactErrors.email}
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Your Message</label>
-                          <textarea 
-                            required 
-                            rows="4" 
-                            placeholder="How can we help you?" 
-                            className="form-input" 
-                            style={{ resize: 'none', borderColor: contactErrors.message ? 'var(--danger)' : 'var(--border-color)' }} 
-                            value={contactMessage}
-                            onChange={(e) => setContactMessage(e.target.value)}
-                          />
-                          {contactErrors.message && (
-                            <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
-                              {contactErrors.message}
-                            </span>
-                          )}
-                        </div>
-                        <button type="submit" className="gradient-btn" style={{ padding: '12px', fontSize: '14px', marginTop: '10px' }}>
-                          Send Message
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              </section>
-            </ScrollReveal>
-          </>
-        )}
-
-        {/* FIND A RIDE VIEW */}
-        {activeTab === 'find' && (
-          <div style={{ padding: '40px 0' }}>
-            <RideSearch onBookRide={handleBookRideClick} activeUser={user} />
-          </div>
-        )}
-
-        {/* OFFER A RIDE VIEW (DRIVER VERIFICATION INTEGRATOR) */}
-        {activeTab === 'offer' && (
-          <div style={{ padding: '20px 0' }}>
-            {!user ? (
-              <div className="container" style={{ textAlign: 'center', padding: '80px 0' }}>
-                <Shield size={48} style={{ color: 'var(--primary)', marginBottom: '16px' }} />
-                <h3>Authentication Required</h3>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>Please login or create an account to offer empty seats and post journeys.</p>
-                <button onClick={() => { setAuthInitialMode('login'); setActiveTab('login'); }} className="gradient-btn" style={{ padding: '10px 24px' }}>
-                  Login to Access
-                </button>
-              </div>
-            ) : user.role === 'driver' && user.driverDetails?.isVerified ? (
-              <DriverDashboard token={token} activeUser={user} />
-            ) : (
-              <VerificationForm 
-                token={token} 
-                currentStatus={user.driverDetails?.verificationStatus}
-                driverDetails={user.driverDetails}
-                onVerificationSubmitted={(updatedUser) => {
-                  setUser(updatedUser);
-                  localStorage.setItem('rc_user', JSON.stringify(updatedUser));
-                }}
-              />
-            )}
-          </div>
-        )}
-
-        {activeTab === 'passenger-dashboard' && user && user.role === 'passenger' && (
-          <div style={{ position: 'relative', overflow: 'hidden', minHeight: '80vh' }}>
-            {/* Background glow effects */}
-            <div style={{
-              position: 'absolute',
-              top: '5%',
-              left: '10%',
-              width: '400px',
-              height: '400px',
-              background: 'radial-gradient(circle, rgba(37,99,235,0.12) 0%, rgba(37,99,235,0) 70%)',
-              filter: 'blur(40px)',
-              zIndex: 0,
-              pointerEvents: 'none'
-            }} />
-            <div style={{
-              position: 'absolute',
-              bottom: '10%',
-              right: '10%',
-              width: '500px',
-              height: '500px',
-              background: 'radial-gradient(circle, rgba(14,165,233,0.12) 0%, rgba(14,165,233,0) 70%)',
-              filter: 'blur(50px)',
-              zIndex: 0,
-              pointerEvents: 'none'
-            }} />
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              <PassengerDashboard 
-                token={token} 
-                activeUser={user}
-                onProfileUpdate={(updatedUser) => {
-                  setUser(updatedUser);
-                  localStorage.setItem('rc_user', JSON.stringify(updatedUser));
-                }}
-                onSearchRides={() => setActiveTab('find')}
-              />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'driver-dashboard' && user && user.role === 'driver' && (
-          <div style={{ position: 'relative', overflow: 'hidden', minHeight: '80vh' }}>
-            {/* Background glow effects */}
-            <div style={{
-              position: 'absolute',
-              top: '5%',
-              left: '10%',
-              width: '400px',
-              height: '400px',
-              background: 'radial-gradient(circle, rgba(37,99,235,0.12) 0%, rgba(37,99,235,0) 70%)',
-              filter: 'blur(40px)',
-              zIndex: 0,
-              pointerEvents: 'none'
-            }} />
-            <div style={{
-              position: 'absolute',
-              bottom: '10%',
-              right: '10%',
-              width: '500px',
-              height: '500px',
-              background: 'radial-gradient(circle, rgba(14,165,233,0.12) 0%, rgba(14,165,233,0) 70%)',
-              filter: 'blur(50px)',
-              zIndex: 0,
-              pointerEvents: 'none'
-            }} />
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              {user.driverDetails?.isVerified ? (
-                <DriverDashboard token={token} activeUser={user} />
+            {user.role === 'driver' && (
+              user.driverDetails?.isVerified ? (
+                <DriverDashboard token={token} activeUser={user} activeTab={roleTab} setActiveTab={setRoleTab} />
               ) : (
-                <VerificationForm 
-                  token={token} 
+                <VerificationForm
+                  token={token}
                   currentStatus={user.driverDetails?.verificationStatus}
                   driverDetails={user.driverDetails}
                   onVerificationSubmitted={(updatedUser) => {
@@ -816,31 +497,253 @@ export default function App() {
                     localStorage.setItem('rc_user', JSON.stringify(updatedUser));
                   }}
                 />
-              )}
-            </div>
-          </div>
-        )}
+              )
+            )}
 
-        {activeTab === 'admin' && user && user.role === 'admin' && (
-          <AdminDashboard token={token} />
-        )}
+            {user.role === 'passenger' && (
+              <PassengerDashboard
+                token={token}
+                activeUser={user}
+                activeTab={roleTab}
+                setActiveTab={setRoleTab}
+                onBookRide={handleBookRideClick}
+                onProfileUpdate={(updatedUser) => {
+                  setUser(updatedUser);
+                  localStorage.setItem('rc_user', JSON.stringify(updatedUser));
+                }}
+                onSearchRides={() => setRoleTab('find')}
+                onLogout={handleLogout}
+              />
+            )}
 
-        {/* ABOUT & CONTACT ACCORDIONS FOR NAVIGATION FALLBACK */}
-        {(activeTab === 'about' || activeTab === 'contact') && (
-          <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
-            <h2>{activeTab === 'about' ? 'About RideConnect' : 'Support Center'}</h2>
-            <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '12px auto 24px auto', lineHeight: '1.6' }}>
-              {activeTab === 'about' 
-                ? 'RideConnect is a peer-to-peer carpooling community designed to make travel safe, affordable, and eco-friendly by connecting drivers with spare seats to commuters going in the same direction.'
-                : 'Need help resolving an issue? You can contact our support team 24/7. Admin dispatch is ready to handle compliance reports, lost items, and payment requests.'
-              }
-            </p>
-            <button onClick={() => setActiveTab('home')} className="gradient-btn" style={{ padding: '10px 24px' }}>
-              Return to Homepage
-            </button>
-          </div>
+            {user.role === 'admin' && (
+              <AdminDashboard token={token} />
+            )}
+          </>
+        ) : (
+          <>
+            {activeTab === 'login' && (
+              <AuthPage
+                initialMode={authInitialMode}
+                onAuthSuccess={handleAuthSuccess}
+              />
+            )}
+
+            {/* HOMEPAGE / FIND RIDE VIEW FOR GUESTS */}
+            {activeTab === 'find' && (
+              <>
+                <Hero
+                  onFindRide={() => {
+                    const searchEl = document.getElementById('search-rides-section');
+                    if (searchEl) searchEl.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  onOfferRide={() => {
+                    setAuthInitialMode('login');
+                    setActiveTab('login');
+                  }}
+                />
+
+                <div id="search-rides-section" style={{ marginTop: '40px', marginBottom: '40px' }}>
+                  <RideSearch onBookRide={handleBookRideClick} activeUser={user} />
+                </div>
+
+                {/* How It Works Section */}
+                <ScrollReveal>
+                  <section className="section-spacer" style={{ background: 'var(--bg-secondary)' }} id="how-it-works">
+                    <div className="container" style={{ textAlign: 'center' }}>
+                      <h2 style={{ fontSize: '32px', marginBottom: '12px' }}>How <span className="gradient-text">It Works</span></h2>
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: '40px' }}>Start sharing trips in three easy steps.</p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+                        <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
+                          <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>1</div>
+                          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Search a Ride</h3>
+                          <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Enter your origin, destination, and travel date. Filter by price, vehicle class, or driver gender.</p>
+                        </div>
+
+                        <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
+                          <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>2</div>
+                          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Book & Verify OTP</h3>
+                          <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Select a verified driver and request seats. Share the start OTP code when boarding for maximum safety.</p>
+                        </div>
+
+                        <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-primary)' }}>
+                          <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', margin: '0 auto 16px auto' }}>3</div>
+                          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Travel & Save</h3>
+                          <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Enjoy a comfortable ride, share costs with friendly travelers, and reduce carbon footprint together!</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </ScrollReveal>
+
+                {/* Why Choose Us Section */}
+                <ScrollReveal>
+                  <section className="section-spacer" id="why-us">
+                    <div className="container">
+                      <h2 style={{ fontSize: '32px', marginBottom: '12px', textAlign: 'center' }}>Why Choose <span className="gradient-text">RideConnect</span></h2>
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: '40px', textAlign: 'center' }}>Your safety and comfort is our highest priority.</p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+                        <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
+                          <Shield size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div>
+                            <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>100% Verified Profile</h4>
+                            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Driving license, vehicle papers, and government IDs are audited manually by admins.</p>
+                          </div>
+                        </div>
+
+                        {/* <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
+                          <Map size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div>
+                            <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Live Map Tracking</h4>
+                            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Monitor pickup pins, drops, and driver location updates in real-time on our responsive map.</p>
+                          </div>
+                        </div> */}
+
+                        <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
+                          <Clock size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div>
+                            <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Affordable Pricing</h4>
+                            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Carpooling cuts your fuel budget by up to 75% while making travel cheaper for everyone.</p>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '16px', padding: '16px' }}>
+                          <Heart size={36} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <div>
+                            <h4 style={{ fontSize: '16px', marginBottom: '6px' }}>Eco-Friendly Travels</h4>
+                            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Fewer empty cars on road means less carbon emissions. Make a green choice today.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </ScrollReveal>
+
+                {/* FAQs Accordion */}
+                <ScrollReveal>
+                  <section className="section-spacer" style={{ background: 'var(--bg-secondary)' }} id="faqs">
+                    <div className="container" style={{ maxWidth: '800px' }}>
+                      <h2 style={{ fontSize: '32px', marginBottom: '12px', textAlign: 'center' }}>Frequently Asked <span className="gradient-text">Questions</span></h2>
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: '40px', textAlign: 'center' }}>Got questions? We've got answers.</p>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
+                          <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>How is driver verification handled?</h4>
+                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>Drivers must upload a valid driving license, government photo ID, vehicle registration certificate, and insurance. The admin checks these manually before allowing the driver to publish rides.</p>
+                        </div>
+
+                        <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
+                          <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>What is the start OTP safety code?</h4>
+                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>When a passenger books a seat, the system generates a secure 4-digit OTP. The passenger provides this code to the driver upon boarding. The driver inputs this to start the trip, verifying the correct passenger has entered the vehicle.</p>
+                        </div>
+
+                        <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-primary)' }}>
+                          <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>What is the Emergency SOS button?</h4>
+                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>If a passenger or driver feels unsafe during a trip, they can click the SOS button in their active dashboard. This sends an immediate notification containing live coordinates to our admin dispatch team and copies details to emergency contacts.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </ScrollReveal>
+
+                {/* Contact Us Section */}
+                <ScrollReveal>
+                  <section className="section-spacer" id="contact">
+                    <div className="container" style={{ maxWidth: '600px' }}>
+                      <div className="glass-card" style={{ padding: '30px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
+                        <h2 style={{ fontSize: '28px', marginBottom: '8px', textAlign: 'center' }}>Contact <span className="gradient-text">Us</span></h2>
+                        <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '24px', fontSize: '14px' }}>Questions, feedback, or complaints? Reach out and we'll reply shortly.</p>
+
+                        {contactSubmitted ? (
+                          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                            <CheckCircle size={48} style={{ color: 'var(--success)', marginBottom: '12px' }} />
+                            <h4 style={{ fontSize: '18px', marginBottom: '6px' }}>Message Sent!</h4>
+                            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Thank you for writing to us. Our support agent will check your ticket shortly.</p>
+                          </div>
+                        ) : (
+                          <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} noValidate>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Your Name</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="John Doe"
+                                className="form-input"
+                                value={contactName}
+                                onChange={(e) => setContactName(e.target.value)}
+                                style={{ borderColor: contactErrors.name ? 'var(--danger)' : 'var(--border-color)' }}
+                              />
+                              {contactErrors.name && (
+                                <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
+                                  {contactErrors.name}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Email Address</label>
+                              <input
+                                type="email"
+                                required
+                                placeholder="john@example.com"
+                                className="form-input"
+                                value={contactEmail}
+                                onChange={(e) => setContactEmail(e.target.value)}
+                                style={{ borderColor: contactErrors.email ? 'var(--danger)' : 'var(--border-color)' }}
+                              />
+                              {contactErrors.email && (
+                                <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
+                                  {contactErrors.email}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Your Message</label>
+                              <textarea
+                                required
+                                rows="4"
+                                placeholder="How can we help you?"
+                                className="form-input"
+                                style={{ resize: 'none', borderColor: contactErrors.message ? 'var(--danger)' : 'var(--border-color)' }}
+                                value={contactMessage}
+                                onChange={(e) => setContactMessage(e.target.value)}
+                              />
+                              {contactErrors.message && (
+                                <span style={{ display: 'block', color: 'var(--danger)', fontSize: '11px', marginTop: '4px' }}>
+                                  {contactErrors.message}
+                                </span>
+                              )}
+                            </div>
+                            <button type="submit" className="gradient-btn" style={{ padding: '12px', fontSize: '14px', marginTop: '10px' }}>
+                              Send Message
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                </ScrollReveal>
+              </>
+            )}
+
+            {(activeTab === 'about' || activeTab === 'contact') && (
+              <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
+                <h2>{activeTab === 'about' ? 'About RideConnect' : 'Support Center'}</h2>
+                <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '12px auto 24px auto', lineHeight: '1.6' }}>
+                  {activeTab === 'about'
+                    ? 'RideConnect is a peer-to-peer carpooling community designed to make travel safe, affordable, and eco-friendly by connecting drivers with spare seats to commuters going in the same direction.'
+                    : 'Need help resolving an issue? You can contact our support team 24/7. Admin dispatch is ready to handle compliance reports, lost items, and payment requests.'
+                  }
+                </p>
+                <button onClick={() => setActiveTab('find')} className="gradient-btn" style={{ padding: '10px 24px' }}>
+                  Search Available Rides
+                </button>
+              </div>
+            )}
+          </>
         )}
-  </main>
+      </main>
 
       {/* 2. Footer Section */}
       <footer style={{

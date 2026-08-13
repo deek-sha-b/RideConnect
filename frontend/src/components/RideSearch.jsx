@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Calendar, Users, SlidersHorizontal, ShieldCheck, Car, Star, DollarSign } from 'lucide-react';
 import { API_URL } from '../config';
+import CityMapSelector from './CityMapSelector';
 
 const LOCAL_PLACES = {
   'Kasaragod': { lat: 12.4984, lng: 74.9896 },
@@ -28,7 +29,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
   const [seats, setSeats] = useState(1);
-  
+
   // Filters
   const [showFilters, setShowFilters] = useState(false);
   const [maxPrice, setMaxPrice] = useState('');
@@ -81,10 +82,10 @@ export default function RideSearch({ onBookRide, activeUser }) {
     <div style={{ padding: '20px 0 60px 0' }} id="find">
       <div className="container">
         <h2 style={{ fontSize: '32px', marginBottom: '8px', textAlign: 'center' }}>
-          Find Your <span className="gradient-text">BlaBlaCar Ride</span>
+          Find Your <span className="gradient-text">Ride</span>
         </h2>
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '30px' }}>
-          Compare prices, stopovers, instant booking ⚡, and driver preferences for a smooth carpool.
+          Compare prices, stopovers, instant booking , and driver preferences for a smooth carpool.
         </p>
 
         {/* Search Bar Form */}
@@ -98,36 +99,22 @@ export default function RideSearch({ onBookRide, activeUser }) {
           boxShadow: 'var(--shadow-md)',
           marginBottom: '40px'
         }}>
+          {/* Pickup & Destination Map & Autocomplete Selector */}
+          <CityMapSelector
+            pickup={pickup}
+            setPickup={setPickup}
+            destination={destination}
+            setDestination={setDestination}
+            placeholderPickup="Leaving from (e.g. Kasaragod, Mangalore, Bangalore)"
+            placeholderDestination="Going to (e.g. Puttur, Vitla, Goa)"
+            showMapByDefault={true}
+          />
+
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px'
           }}>
-            {/* Pickup */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <MapPin size={18} style={{ position: 'absolute', left: '12px', color: 'var(--primary)', zIndex: 10 }} />
-              <input
-                type="text"
-                placeholder="Leaving from (e.g. Kasaragod, Bangalore, Mumbai)"
-                value={pickup}
-                onChange={(e) => setPickup(e.target.value)}
-                className="form-input"
-                style={{ paddingLeft: '40px' }}
-              />
-            </div>
-
-            {/* Destination */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <MapPin size={18} style={{ position: 'absolute', left: '12px', color: 'var(--secondary)', zIndex: 10 }} />
-              <input
-                type="text"
-                placeholder="Going to (e.g. Mangalore, Goa, Delhi)"
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                className="form-input"
-                style={{ paddingLeft: '40px' }}
-              />
-            </div>
 
             {/* Date */}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -190,7 +177,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
               onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
             >
               <SlidersHorizontal size={16} />
-              <span>BlaBlaCar Filters {showFilters ? '(Hide)' : ''}</span>
+              <span>Filters {showFilters ? '(Hide)' : ''}</span>
             </button>
 
             <button
@@ -317,7 +304,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
             gap: '24px'
           }}>
             {rides.map((ride) => (
-              <div 
+              <div
                 key={ride._id}
                 className="glass-card animate-fade-in"
                 style={{
@@ -407,7 +394,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
                             transform: (isPassengerPickup || isPassengerDrop) ? 'translate(-2px, -2px)' : 'none',
                             zIndex: 10
                           }} />
-                          
+
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{
                               fontSize: '13px',
@@ -486,7 +473,7 @@ export default function RideSearch({ onBookRide, activeUser }) {
 
                 {/* Booking Button */}
                 {activeUser && activeUser.id === ride.driver?._id ? (
-                  <button 
+                  <button
                     disabled
                     style={{
                       width: '100%',

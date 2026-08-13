@@ -13,7 +13,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
   const [phone, setPhone] = useState('');
   const [licenseNo, setLicenseNo] = useState('');
   const [licenseFile, setLicenseFile] = useState(null);
-  
+
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
@@ -102,7 +102,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
 
     setLoading(true);
 
-    const url = mode === 'login' 
+    const url = mode === 'login'
       ? `${API_URL}/api/auth/login`
       : `${API_URL}/api/auth/register`;
 
@@ -132,12 +132,12 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         }
         body = formData;
       } else {
-        body = JSON.stringify({ 
-          name: tName, 
-          email: tEmail, 
-          password: tPassword, 
-          phone: tPhone, 
-          role 
+        body = JSON.stringify({
+          name: tName,
+          email: tEmail,
+          password: tPassword,
+          phone: tPhone,
+          role
         });
         headers['Content-Type'] = 'application/json';
       }
@@ -166,7 +166,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         // Registration success flow: Redirect to login and clear inputs
         setSuccessMessage('Registration successful! Please sign in using your credentials.');
         setMode('login');
-        
+
         // Reset registration specific fields
         setName('');
         setPhone('');
@@ -188,7 +188,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
       setError('');
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
-      
+
       const res = await fetch(`${API_URL}/api/auth/google`, {
         method: 'POST',
         headers: {
@@ -196,12 +196,12 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         },
         body: JSON.stringify({ token: idToken })
       });
-      
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Google Authentication failed.');
       }
-      
+
       onAuthSuccess(data.user, data.token);
     } catch (err) {
       console.error(err);
@@ -230,29 +230,29 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         maxWidth: '460px',
         boxShadow: 'var(--shadow-lg)'
       }}>
-        
+
         {/* Auth Toggle Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '16px', 
-          borderBottom: '1px solid var(--border-color)', 
-          marginBottom: '24px' 
+        <div style={{
+          display: 'flex',
+          gap: '20px',
+          borderBottom: '1px solid var(--border-color)',
+          marginBottom: '24px'
         }}>
           <button
             type="button"
-            onClick={() => { 
-              setMode('login'); 
-              setError(''); 
+            onClick={() => {
+              setMode('login');
+              setError('');
               setFieldErrors({});
               setSuccessMessage('');
             }}
             style={{
-              paddingBottom: '12px', 
-              background: 'none', 
+              paddingBottom: '12px',
+              background: 'none',
               border: 'none',
               color: mode === 'login' ? 'var(--primary)' : 'var(--text-secondary)',
-              fontWeight: '700', 
-              fontSize: '18px', 
+              fontWeight: '700',
+              fontSize: '18px',
               cursor: 'pointer',
               borderBottom: mode === 'login' ? '3px solid var(--primary)' : 'none',
               transition: 'all 0.3s ease'
@@ -262,19 +262,19 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
           </button>
           <button
             type="button"
-            onClick={() => { 
-              setMode('register'); 
-              setError(''); 
+            onClick={() => {
+              setMode('register');
+              setError('');
               setFieldErrors({});
               setSuccessMessage('');
             }}
             style={{
-              paddingBottom: '12px', 
-              background: 'none', 
+              paddingBottom: '12px',
+              background: 'none',
               border: 'none',
               color: mode === 'register' ? 'var(--primary)' : 'var(--text-secondary)',
-              fontWeight: '700', 
-              fontSize: '18px', 
+              fontWeight: '700',
+              fontSize: '18px',
               cursor: 'pointer',
               borderBottom: mode === 'register' ? '3px solid var(--primary)' : 'none',
               transition: 'all 0.3s ease'
@@ -287,13 +287,13 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         {/* Global/API Success message */}
         {successMessage && (
           <div style={{
-            padding: '12px 16px', 
+            padding: '12px 16px',
             backgroundColor: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid var(--success)', 
+            border: '1px solid var(--success)',
             color: 'var(--success)',
-            fontSize: '13px', 
-            borderRadius: '8px', 
-            marginBottom: '20px', 
+            fontSize: '13px',
+            borderRadius: '8px',
+            marginBottom: '20px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
@@ -306,13 +306,13 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
         {/* Global/API Error message */}
         {error && (
           <div style={{
-            padding: '12px 16px', 
+            padding: '12px 16px',
             backgroundColor: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid var(--danger)', 
+            border: '1px solid var(--danger)',
             color: 'var(--danger)',
-            fontSize: '13px', 
-            borderRadius: '8px', 
-            marginBottom: '20px', 
+            fontSize: '13px',
+            borderRadius: '8px',
+            marginBottom: '20px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
@@ -337,7 +337,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="form-input"
-                    style={{ 
+                    style={{
                       paddingLeft: '38px',
                       borderColor: fieldErrors.name ? 'var(--danger)' : 'var(--border-color)'
                     }}
@@ -362,7 +362,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="form-input"
-                    style={{ 
+                    style={{
                       paddingLeft: '38px',
                       borderColor: fieldErrors.phone ? 'var(--danger)' : 'var(--border-color)'
                     }}
@@ -383,35 +383,35 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                     type="button"
                     onClick={() => setRole('passenger')}
                     style={{
-                      flex: 1, 
-                      padding: '10px', 
+                      flex: 1,
+                      padding: '10px',
                       borderRadius: '8px',
                       border: '1px solid',
                       borderColor: role === 'passenger' ? 'var(--primary)' : 'var(--border-color)',
                       backgroundColor: role === 'passenger' ? 'var(--primary-light)' : 'var(--bg-secondary)',
                       color: role === 'passenger' ? 'var(--primary)' : 'var(--text-secondary)',
-                      fontWeight: '600', 
-                      fontSize: '13px', 
+                      fontWeight: '600',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       transition: 'all 0.3s ease'
                     }}
                   >
                     Passenger
                   </button>
-                  
+
                   <button
                     type="button"
                     onClick={() => setRole('driver')}
                     style={{
-                      flex: 1, 
-                      padding: '10px', 
+                      flex: 1,
+                      padding: '10px',
                       borderRadius: '8px',
                       border: '1px solid',
                       borderColor: role === 'driver' ? 'var(--primary)' : 'var(--border-color)',
                       backgroundColor: role === 'driver' ? 'var(--primary-light)' : 'var(--bg-secondary)',
                       color: role === 'driver' ? 'var(--primary)' : 'var(--text-secondary)',
-                      fontWeight: '600', 
-                      fontSize: '13px', 
+                      fontWeight: '600',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       transition: 'all 0.3s ease'
                     }}
@@ -423,22 +423,22 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
 
               {/* Driving License Details */}
               {role === 'driver' && (
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '12px', 
-                  background: 'var(--bg-primary)', 
-                  padding: '16px', 
-                  borderRadius: '8px', 
-                  border: '1px solid var(--border-color)', 
-                  marginTop: '4px' 
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  background: 'var(--bg-primary)',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  marginTop: '4px'
                 }}>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    fontWeight: '700', 
-                    color: 'var(--primary)', 
-                    borderBottom: '1px solid var(--border-color)', 
-                    paddingBottom: '6px' 
+                  <div style={{
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    color: 'var(--primary)',
+                    borderBottom: '1px solid var(--border-color)',
+                    paddingBottom: '6px'
                   }}>
                     Driving License Details
                   </div>
@@ -451,7 +451,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                       value={licenseNo}
                       onChange={(e) => setLicenseNo(e.target.value)}
                       className="form-input"
-                      style={{ 
+                      style={{
                         borderColor: fieldErrors.licenseNo ? 'var(--danger)' : 'var(--border-color)'
                       }}
                     />
@@ -493,7 +493,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="form-input"
-                style={{ 
+                style={{
                   paddingLeft: '38px',
                   borderColor: fieldErrors.email ? 'var(--danger)' : 'var(--border-color)'
                 }}
@@ -518,7 +518,7 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="form-input"
-                style={{ 
+                style={{
                   paddingLeft: '38px',
                   borderColor: fieldErrors.password ? 'var(--danger)' : 'var(--border-color)'
                 }}
@@ -535,10 +535,10 @@ export default function AuthPage({ initialMode = 'login', onAuthSuccess }) {
             type="submit"
             disabled={loading}
             className="gradient-btn"
-            style={{ 
-              width: '100%', 
-              padding: '14px', 
-              fontSize: '15px', 
+            style={{
+              width: '100%',
+              padding: '14px',
+              fontSize: '15px',
               marginTop: '10px',
               borderRadius: '10px'
             }}
