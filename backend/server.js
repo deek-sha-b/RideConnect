@@ -64,31 +64,54 @@ function getRouteDistance(stops) {
   return dist;
 }
 
+function findStopIndex(stops, query) {
+  if (!stops || !query) return -1;
+  const q = (typeof query === 'object' ? (query.name || '') : String(query)).trim().toLowerCase();
+  if (!q) return -1;
+
+  const names = stops.map(s => getStopName(s).trim().toLowerCase());
+
+  // 1. Exact match
+  let idx = names.indexOf(q);
+  if (idx !== -1) return idx;
+
+  // 2. Substring match both ways (name contains query OR query contains name)
+  idx = names.findIndex(n => n.length > 0 && (n.includes(q) || q.includes(n)));
+  if (idx !== -1) return idx;
+
+  // 3. Token match
+  const qToken = q.split(/[\s,]+/)[0];
+  if (qToken.length >= 3) {
+    idx = names.findIndex(n => n.includes(qToken) || qToken.includes(n));
+    if (idx !== -1) return idx;
+  }
+
+  return -1;
+}
+
 function getSegmentDistance(stops, pickup, destination) {
   if (!stops || stops.length < 2) return 0;
 
-  const names = stops.map(getStopName);
-  let startIdx = names.indexOf(pickup);
-  let endIdx = names.indexOf(destination);
+  const pLoc = pickup || getStopName(stops[0]);
+  const dLoc = destination || getStopName(stops[stops.length - 1]);
 
-  // Fallback case-insensitive / partial match
-  if (startIdx === -1) {
-    startIdx = names.findIndex(n => n.toLowerCase().includes((pickup || '').toLowerCase()));
-  }
-  if (endIdx === -1) {
-    endIdx = names.findIndex(n => n.toLowerCase().includes((destination || '').toLowerCase()));
+  const validation = validatePassengerRouteSegment(stops, pLoc, dLoc);
+  if (validation.valid && validation.distance > 0) {
+    return parseFloat(validation.distance.toFixed(2));
   }
 
-  if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) {
-    // If not matching by name, return full route distance as default segment estimate
-    return getRouteDistance(stops);
+  const pIdx = findStopIndex(stops, pLoc);
+  const dIdx = findStopIndex(stops, dLoc);
+
+  if (pIdx !== -1 && dIdx !== -1 && pIdx < dIdx) {
+    let dist = 0;
+    for (let i = pIdx; i < dIdx; i++) {
+      dist += getHaversineDistance(stops[i], stops[i + 1]);
+    }
+    return parseFloat(dist.toFixed(2));
   }
 
-  let dist = 0;
-  for (let i = startIdx; i < endIdx; i++) {
-    dist += getHaversineDistance(stops[i], stops[i + 1]);
-  }
-  return dist;
+  return getRouteDistance(stops);
 }
 
 // Vehicle Operating Costs & Service Fee Configuration
@@ -129,7 +152,121 @@ function calculatePassengerServiceFee(baseFare) {
   };
 }
 
+function isPointNearSegment(pCoords, aCoords, bCoords, maxDistKm = 8.0) {
+  if (!pCoords || !aCoords || !bCoords) return { isOnSegment: false, dist: Infinity, t: 0 };
+
+  const dx = bCoords.lng - aCoords.lng;
+  const dy = bCoords.lat - aCoords.lat;
+  const lenSq = dx * dx + dy * dy;
+
+  let t = 0;
+  if (lenSq > 0) {
+    t = ((pCoords.lng - aCoords.lng) * dx + (pCoords.lat - aCoords.lat) * dy) / lenSq;
+  }
+  const tClamped = Math.max(0, Math.min(1, t));
+
+  const projLng = aCoords.lng + tClamped * dx;
+  const projLat = aCoords.lat + tClamped * dy;
+  const projCoords = { lat: projLat, lng: projLng };
+
+  const distToSegment = getHaversineDistance(pCoords, projCoords);
+  const isOnSegment = t >= -0.05 && t <= 1.05 && distToSegment <= maxDistKm;
+
+  return { isOnSegment, dist: distToSegment, t: tClamped, projCoords };
+}
+
+function findLocationOnRoute(stops, loc) {
+  if (!stops || stops.length < 2 || !loc) return { isOnRoute: false };
+
+  const locName = getStopName(loc);
+  const locCoords = extractCoords(loc) || LOCAL_PLACES[locName];
+
+  // 1. Direct name or coordinate match with explicit driver stops
+  const names = stops.map(getStopName);
+  for (let i = 0; i < stops.length; i++) {
+    const sName = names[i];
+    if (locName && sName.toLowerCase().trim() === locName.toLowerCase().trim()) {
+      return { isOnRoute: true, segmentIndex: i, routeIndex: i, isExplicitStop: true, name: sName };
+    }
+    const sCoords = extractCoords(stops[i]);
+    if (locCoords && sCoords && getHaversineDistance(locCoords, sCoords) <= 3.0) {
+      return { isOnRoute: true, segmentIndex: i, routeIndex: i, isExplicitStop: true, name: sName };
+    }
+  }
+
+  // 2. Check if location lies along any route segment Si -> S(i+1)
+  if (locCoords) {
+    for (let i = 0; i < stops.length - 1; i++) {
+      const aCoords = extractCoords(stops[i]);
+      const bCoords = extractCoords(stops[i + 1]);
+      const res = isPointNearSegment(locCoords, aCoords, bCoords, 8.0);
+      if (res.isOnSegment) {
+        return {
+          isOnRoute: true,
+          segmentIndex: i,
+          segmentProgress: res.t,
+          routeIndex: i + res.t,
+          isExplicitStop: false,
+          name: locName || `Stop on ${names[i]} - ${names[i+1]} segment`
+        };
+      }
+    }
+  }
+
+  return { isOnRoute: false };
+}
+
+function validatePassengerRouteSegment(stops, pickupLoc, dropLoc) {
+  if (!stops || stops.length < 2) {
+    return { valid: false, reason: "Invalid driver route stops." };
+  }
+
+  const pRes = findLocationOnRoute(stops, pickupLoc);
+  const dRes = findLocationOnRoute(stops, dropLoc);
+
+  if (!pRes.isOnRoute) {
+    return { valid: false, reason: `Pickup location "${getStopName(pickupLoc)}" is outside the driver's route.` };
+  }
+
+  if (!dRes.isOnRoute) {
+    return { valid: false, reason: `Selected drop-off location "${getStopName(dropLoc)}" is outside the driver's route.` };
+  }
+
+  if (pRes.routeIndex >= dRes.routeIndex) {
+    return { valid: false, reason: `Drop-off location must come after pickup location along the driver's route.` };
+  }
+
+  // Calculate accurate segment distance
+  let dist = 0;
+  const pIdxInt = Math.floor(pRes.routeIndex);
+  const dIdxInt = Math.floor(dRes.routeIndex);
+
+  if (pIdxInt === dIdxInt) {
+    const s1 = stops[pIdxInt];
+    const s2 = stops[pIdxInt + 1];
+    const fullSegDist = getHaversineDistance(s1, s2);
+    dist = Math.max(1, Math.abs(dRes.routeIndex - pRes.routeIndex) * fullSegDist);
+  } else {
+    const s1 = stops[pIdxInt];
+    const s2 = stops[pIdxInt + 1];
+    dist += (1 - (pRes.routeIndex - pIdxInt)) * getHaversineDistance(s1, s2);
+
+    for (let i = pIdxInt + 1; i < dIdxInt; i++) {
+      dist += getHaversineDistance(stops[i], stops[i + 1]);
+    }
+
+    const end1 = stops[dIdxInt];
+    const end2 = stops[dIdxInt + 1];
+    dist += (dRes.routeIndex - dIdxInt) * getHaversineDistance(end1, end2);
+  }
+
+  return { valid: true, distance: dist, pickupRes: pRes, dropRes: dRes };
+}
+
 function isPassengerRouteOnDriverRoute(driverPickup, driverDest, passengerPickup, passengerDest) {
+  const val = validatePassengerRouteSegment([driverPickup, driverDest], passengerPickup, passengerDest);
+  if (val.valid) return true;
+
   const checkInOrder = (arr, p1, p2, p3, p4) => {
     const idx1 = arr.indexOf(p1);
     const idx2 = arr.indexOf(p2);
@@ -170,25 +307,22 @@ async function recalculateFaresForRide(rideId) {
 
   const activeBookings = await Booking.find({
     ride: rideId,
-    status: { $in: ['accepted', 'started', 'completed'] }
+    status: { $in: ['accepted', 'started', 'completed', 'requested'] }
   });
 
-  // Calculate the total weight (passengerDist * seatsBooked) for all active bookings
-  let totalWeight = 0;
-  const bookingsWithDist = [];
+  const totalRouteDist = getRouteDistance(ride.stops);
+  const seatPriceDriver = ride.totalSeats > 0 ? (ride.price / ride.totalSeats) : ride.price;
 
   for (const b of activeBookings) {
     const passengerDist = getSegmentDistance(ride.stops, b.pickupLocation, b.destination);
-    const weight = passengerDist * b.seatsBooked;
-    totalWeight += weight;
-    bookingsWithDist.push({ booking: b, weight });
-  }
+    const segmentBaseFarePerSeat = totalRouteDist > 0 ? (passengerDist / totalRouteDist) * seatPriceDriver : seatPriceDriver;
+    const baseFareTotal = parseFloat((segmentBaseFarePerSeat * (b.seatsBooked || 1)).toFixed(2));
+    const feeDetails = calculatePassengerServiceFee(baseFareTotal);
 
-  // Split the total ride price proportionally among active bookings based on their weight
-  for (const item of bookingsWithDist) {
-    const b = item.booking;
-    const fareVal = totalWeight > 0 ? (item.weight / totalWeight) * ride.price : 0;
-    b.fare = parseFloat(fareVal.toFixed(2));
+    b.fare = feeDetails.baseFare;
+    b.baseFare = feeDetails.baseFare;
+    b.serviceFee = feeDetails.serviceFee;
+    b.totalAmount = feeDetails.totalAmount;
     b.deposit = 0;
     await b.save();
   }
@@ -850,7 +984,12 @@ app.post('/api/rides', authenticateToken, async (req, res) => {
 app.get('/api/rides/driver', authenticateToken, async (req, res) => {
   try {
     const rides = await Ride.find({ driver: req.user.id }).sort({ departureTime: -1 });
-    res.json(rides);
+    const formattedRides = rides.map(ride => {
+      const rideObj = ride.toObject();
+      rideObj.pricePerSeat = ride.totalSeats > 0 ? parseFloat((ride.price / ride.totalSeats).toFixed(2)) : ride.price;
+      return rideObj;
+    });
+    res.json(formattedRides);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching driver rides', error: error.message });
   }
@@ -862,8 +1001,11 @@ app.get('/api/rides/:id', async (req, res) => {
     const ride = await Ride.findById(req.params.id).populate('driver', 'name rating ratingCount phone driverDetails');
     if (!ride) return res.status(404).json({ message: 'Ride not found' });
 
+    const rideObj = ride.toObject();
+    rideObj.pricePerSeat = ride.totalSeats > 0 ? parseFloat((ride.price / ride.totalSeats).toFixed(2)) : ride.price;
+
     const bookings = await Booking.find({ ride: ride._id }).populate('passenger', 'name rating phone');
-    res.json({ ride, bookings });
+    res.json({ ride: rideObj, bookings });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching ride details', error: error.message });
   }
@@ -902,17 +1044,12 @@ app.post('/api/bookings', authenticateToken, async (req, res) => {
     const pLoc = pickupLocation || ride.pickupLocation;
     const dLoc = destination || ride.destination;
 
-    const pIdx = ride.stops.indexOf(pLoc);
-    const dIdx = ride.stops.indexOf(dLoc);
-
-    if (pIdx === -1 || dIdx === -1) {
-      return res.status(400).json({ message: 'Selected pickup/destination stops are not part of the driver\'s route.' });
-    }
-    if (pIdx >= dIdx) {
-      return res.status(400).json({ message: 'Pickup stop must come before the drop stop on the route.' });
+    const routeValidation = validatePassengerRouteSegment(ride.stops, pLoc, dLoc);
+    if (!routeValidation.valid) {
+      return res.status(400).json({ message: routeValidation.reason || 'Selected drop-off location is outside the driver\'s route.' });
     }
 
-    const distance = getSegmentDistance(ride.stops, pLoc, dLoc);
+    const distance = routeValidation.distance;
     const totalRouteDist = getRouteDistance(ride.stops);
     const seatPriceDriver = ride.totalSeats > 0 ? (ride.price / ride.totalSeats) : ride.price;
     const segmentBaseFarePerSeat = totalRouteDist > 0 ? parseFloat(((distance / totalRouteDist) * seatPriceDriver).toFixed(2)) : 0;
@@ -971,8 +1108,40 @@ app.get('/api/bookings/passenger', authenticateToken, async (req, res) => {
 // Bookings requests for driver's rides
 app.get('/api/bookings/driver', authenticateToken, async (req, res) => {
   try {
-    const driverRides = await Ride.find({ driver: req.user.id }).select('_id');
+    const driverRides = await Ride.find({ driver: req.user.id });
     const rideIds = driverRides.map(r => r._id);
+    const now = new Date();
+
+    // Auto-complete trips whose estimated end time has passed
+    for (const ride of driverRides) {
+      if (ride.status === 'completed' || ride.status === 'cancelled') continue;
+
+      const departure = new Date(ride.departureTime);
+      const routeDist = getRouteDistance(ride.stops || [ride.pickupLocation, ride.destination]);
+      const durationHours = Math.max(1, routeDist / 40);
+      const estimatedEndTime = new Date(departure.getTime() + durationHours * 3600 * 1000);
+
+      if (now >= estimatedEndTime) {
+        ride.status = 'completed';
+        await ride.save();
+
+        const activeBookings = await Booking.find({ ride: ride._id, status: { $in: ['accepted', 'started'] } });
+        let addedEarnings = 0;
+        for (const b of activeBookings) {
+          b.status = 'completed';
+          await b.save();
+          addedEarnings += (b.baseFare || b.fare || 0);
+        }
+
+        if (addedEarnings > 0) {
+          const driverUser = await User.findById(req.user.id);
+          if (driverUser && driverUser.driverDetails) {
+            driverUser.driverDetails.earnings = (driverUser.driverDetails.earnings || 0) + addedEarnings;
+            await driverUser.save();
+          }
+        }
+      }
+    }
 
     const bookings = await Booking.find({ ride: { $in: rideIds } })
       .populate('ride')
@@ -1055,7 +1224,7 @@ app.put('/api/bookings/:id/status', authenticateToken, async (req, res) => {
       // Update ride status to completed if all bookings on it are complete/cancelled
       // Calculate earnings for the driver
       const driver = await User.findById(booking.ride.driver);
-      const tripEarning = booking.fare || (booking.ride.price * booking.seatsBooked);
+      const tripEarning = booking.baseFare || booking.fare || ((booking.ride.price / (booking.ride.totalSeats || 1)) * booking.seatsBooked);
       driver.driverDetails.earnings += tripEarning;
       await driver.save();
 
@@ -1232,9 +1401,7 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
 
     let totalPlatformRevenue = 0;
     completedBookings.forEach(booking => {
-      if (booking.ride) {
-        totalPlatformRevenue += booking.ride.price * booking.seatsBooked;
-      }
+      totalPlatformRevenue += booking.serviceFee || Math.max(15, Math.round((booking.baseFare || booking.fare || 0) * 0.12));
     });
 
     // Mock chart data for weekly usage stats

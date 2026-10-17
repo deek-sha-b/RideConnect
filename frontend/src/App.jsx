@@ -63,28 +63,38 @@ export default function App() {
   const [bookingError, setBookingError] = useState('');
 
 
-  // Auto-restore session from localStorage on mount
+  // Auto-restore session from sessionStorage (fallback to localStorage) on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem('rc_user');
-    const savedToken = localStorage.getItem('rc_token');
-    const savedTheme = localStorage.getItem('rc_theme') || 'light';
+    const savedUser = sessionStorage.getItem('rc_user') || localStorage.getItem('rc_user');
+    const savedToken = sessionStorage.getItem('rc_token') || localStorage.getItem('rc_token');
+    const savedTheme = sessionStorage.getItem('rc_theme') || localStorage.getItem('rc_theme') || 'light';
 
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
 
     if (savedUser && savedToken) {
-      const parsedUser = JSON.parse(savedUser);
-      setUser(parsedUser);
-      setToken(savedToken);
-      if (parsedUser.role === 'passenger') {
-        setRoleTab('my-rides');
-      } else if (parsedUser.role === 'driver') {
-        setRoleTab('overview');
-      } else if (parsedUser.role === 'admin') {
-        setRoleTab('admin');
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        setToken(savedToken);
+        // Isolate session data into current tab's sessionStorage
+        sessionStorage.setItem('rc_user', JSON.stringify(parsedUser));
+        sessionStorage.setItem('rc_token', savedToken);
+        // Clear global shared localStorage so new tabs start independent
+        localStorage.removeItem('rc_user');
+        localStorage.removeItem('rc_token');
+
+        if (parsedUser.role === 'passenger') {
+          setRoleTab('my-rides');
+        } else if (parsedUser.role === 'driver') {
+          setRoleTab('overview');
+        } else if (parsedUser.role === 'admin') {
+          setRoleTab('admin');
+        }
+        fetchLatestProfile(savedToken);
+      } catch (e) {
+        console.error('Error parsing session user:', e);
       }
-      // Fetch latest profile status
-      fetchLatestProfile(savedToken);
     }
   }, []);
 
@@ -106,7 +116,7 @@ export default function App() {
       if (res.ok) {
         const profile = await res.json();
         setUser(profile);
-        localStorage.setItem('rc_user', JSON.stringify(profile));
+        sessionStorage.setItem('rc_user', JSON.stringify(profile));
       }
     } catch (err) {
       console.error(err);
@@ -116,8 +126,11 @@ export default function App() {
   const handleAuthSuccess = (userData, sessionToken) => {
     setUser(userData);
     setToken(sessionToken);
-    localStorage.setItem('rc_user', JSON.stringify(userData));
-    localStorage.setItem('rc_token', sessionToken);
+    sessionStorage.setItem('rc_user', JSON.stringify(userData));
+    sessionStorage.setItem('rc_token', sessionToken);
+    // Clear global shared localStorage to ensure subsequent new tabs start fresh & independent
+    localStorage.removeItem('rc_user');
+    localStorage.removeItem('rc_token');
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
 
     // Redirect based on role
@@ -133,6 +146,8 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     setToken('');
+    sessionStorage.removeItem('rc_user');
+    sessionStorage.removeItem('rc_token');
     localStorage.removeItem('rc_user');
     localStorage.removeItem('rc_token');
     setActiveTab('find');
@@ -189,16 +204,34 @@ export default function App() {
     setContactSubmitted(true);
   };
 
+  const findStopIndexInRide = (stops, query) => {
+    if (!stops || !query) return -1;
+    const q = (typeof query === 'object' ? (query.name || '') : String(query)).trim().toLowerCase();
+    if (!q) return -1;
+    const names = stops.map(s => (typeof s === 'object' ? (s.name || '') : String(s)).trim().toLowerCase());
+
+    let idx = names.indexOf(q);
+    if (idx !== -1) return idx;
+
+    idx = names.findIndex(n => n.length > 0 && (n.includes(q) || q.includes(n)));
+    if (idx !== -1) return idx;
+
+    const qToken = q.split(/[\s,]+/)[0];
+    if (qToken.length >= 3) {
+      idx = names.findIndex(n => n.includes(qToken) || qToken.includes(n));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
   const getBookingSegmentDistance = (startLoc, endLoc) => {
     if (!selectedRideForBooking || !selectedRideForBooking.stops) return 0;
     const fromLoc = startLoc || bookingPickup || selectedRideForBooking.pickupLocation;
     const toLoc = endLoc || bookingDestination || selectedRideForBooking.destination;
 
     const stops = selectedRideForBooking.stops;
-    const stopNames = stops.map(s => typeof s === 'object' ? (s.name || '') : s);
-    const startIdx = stopNames.indexOf(fromLoc);
-    const endIdx = stopNames.indexOf(toLoc);
-    if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) return 0;
+    const startIdx = findStopIndexInRide(stops, fromLoc);
+    const endIdx = findStopIndexInRide(stops, toLoc);
 
     const LOCAL_PLACES = {
       'Kasaragod': { lat: 12.4984, lng: 74.9896 },
@@ -213,7 +246,7 @@ export default function App() {
       if (typeof s === 'object' && s && s.lat != null && s.lng != null && (s.lat !== 0 || s.lng !== 0)) {
         return { lat: parseFloat(s.lat), lng: parseFloat(s.lng) };
       }
-      const name = typeof s === 'object' ? s.name : s;
+      const name = typeof s === 'object' ? s.name : String(s);
       return LOCAL_PLACES[name] || { lat: 12.5, lng: 75.0 };
     };
 
@@ -232,6 +265,13 @@ export default function App() {
       return R * c;
     };
 
+    let fullRouteDist = 0;
+    for (let i = 0; i < stops.length - 1; i++) {
+      fullRouteDist += getHaversine(stops[i], stops[i + 1]);
+    }
+
+    if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) return fullRouteDist;
+
     let totalDist = 0;
     for (let i = startIdx; i < endIdx; i++) {
       totalDist += getHaversine(stops[i], stops[i + 1]);
@@ -246,9 +286,8 @@ export default function App() {
       return;
     }
     const stops = selectedRideForBooking.stops || [];
-    const stopNames = stops.map(s => typeof s === 'object' ? (s.name || '') : s);
-    const pIdx = stopNames.indexOf(bookingPickup);
-    const dIdx = stopNames.indexOf(bookingDestination);
+    const pIdx = findStopIndexInRide(stops, bookingPickup);
+    const dIdx = findStopIndexInRide(stops, bookingDestination);
     if (pIdx === -1 || dIdx === -1) {
       setBookingError('Selected stops are not part of this ride\'s route.');
       return;
@@ -308,6 +347,7 @@ export default function App() {
         theme={theme}
         setTheme={(t) => {
           setTheme(t);
+          sessionStorage.setItem('rc_theme', t);
           localStorage.setItem('rc_theme', t);
         }}
         activeRoleTab={roleTab}
@@ -320,7 +360,7 @@ export default function App() {
       {selectedRideForBooking && (() => {
         const segmentDistance = getBookingSegmentDistance();
         const totalDistance = getBookingSegmentDistance(selectedRideForBooking.stops[0], selectedRideForBooking.stops[selectedRideForBooking.stops.length - 1]);
-        const driverSeatPrice = (selectedRideForBooking.totalPrice || selectedRideForBooking.price || 0) / (selectedRideForBooking.totalSeats || 1);
+        const driverSeatPrice = selectedRideForBooking.pricePerSeat || (selectedRideForBooking.totalPrice ? (selectedRideForBooking.totalPrice / (selectedRideForBooking.totalSeats || 1)) : (selectedRideForBooking.price || 0));
         const segmentFarePerSeat = totalDistance > 0 ? (segmentDistance / totalDistance) * driverSeatPrice : 0;
         const baseFareTotal = segmentFarePerSeat * bookingSeats;
         const serviceFee = Math.max(15, Math.round(baseFareTotal * 0.12));
@@ -492,29 +532,29 @@ export default function App() {
                   token={token}
                   currentStatus={user.driverDetails?.verificationStatus}
                   driverDetails={user.driverDetails}
-                  onVerificationSubmitted={(updatedUser) => {
-                    setUser(updatedUser);
-                    localStorage.setItem('rc_user', JSON.stringify(updatedUser));
-                  }}
-                />
-              )
-            )}
-
-            {user.role === 'passenger' && (
-              <PassengerDashboard
-                token={token}
-                activeUser={user}
-                activeTab={roleTab}
-                setActiveTab={setRoleTab}
-                onBookRide={handleBookRideClick}
-                onProfileUpdate={(updatedUser) => {
+                onVerificationSubmitted={(updatedUser) => {
                   setUser(updatedUser);
-                  localStorage.setItem('rc_user', JSON.stringify(updatedUser));
+                  sessionStorage.setItem('rc_user', JSON.stringify(updatedUser));
                 }}
-                onSearchRides={() => setRoleTab('find')}
-                onLogout={handleLogout}
               />
-            )}
+            )
+          )}
+
+          {user.role === 'passenger' && (
+            <PassengerDashboard
+              token={token}
+              activeUser={user}
+              activeTab={roleTab}
+              setActiveTab={setRoleTab}
+              onBookRide={handleBookRideClick}
+              onProfileUpdate={(updatedUser) => {
+                setUser(updatedUser);
+                sessionStorage.setItem('rc_user', JSON.stringify(updatedUser));
+              }}
+              onSearchRides={() => setRoleTab('find')}
+              onLogout={handleLogout}
+            />
+          )}
 
             {user.role === 'admin' && (
               <AdminDashboard token={token} />

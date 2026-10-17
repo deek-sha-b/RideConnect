@@ -29,12 +29,8 @@ export default function Navbar({
   // Build role-specific navigation items
   const driverNavItems = [
     { id: 'overview', label: 'Overview', icon: Briefcase },
-    { id: 'offer-ride', label: 'Offer Ride', icon: PlusCircle },
-    { id: 'my-trips', label: 'My Trips', icon: Car, count: badgeCounts.driverRidesCount },
-    { id: 'requests', label: 'Requests', icon: Users, count: badgeCounts.driverRequestsCount },
     { id: 'trip-tracking', label: 'Live Tracking', icon: Navigation, isLive: badgeCounts.hasActiveTrip },
     { id: 'messages', label: 'Messages', icon: MessageCircle },
-    { id: 'earnings', label: 'Earnings', icon: DollarSign },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

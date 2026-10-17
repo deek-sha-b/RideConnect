@@ -149,114 +149,20 @@ export default function RideSearch({ onBookRide, activeUser }) {
           {/* Action Row */}
           <div style={{
             display: 'flex',
-            justifyContent: 'space-between',
+            justifyContent: 'center',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '16px',
             borderTop: '1px solid var(--border-color)',
             paddingTop: '16px'
           }}>
             <button
-              type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'none',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '8px 16px',
-                cursor: 'pointer',
-                color: 'var(--text-primary)',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'var(--transition)'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--primary)'}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
-            >
-              <SlidersHorizontal size={16} />
-              <span>Filters {showFilters ? '(Hide)' : ''}</span>
-            </button>
-
-            <button
               type="submit"
               className="gradient-btn"
-              style={{ padding: '12px 28px', fontSize: '15px', gap: '8px' }}
+              style={{ padding: '12px 28px', fontSize: '15px', gap: '8px', width: '100%' }}
             >
-              <Search size={16} />
+              <Search size={18} />
               Search Carpools
             </button>
           </div>
-
-          {/* Collapsible Filters Panel */}
-          {showFilters && (
-            <div className="animate-fade-in" style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: '16px',
-              padding: '16px',
-              borderRadius: '8px',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)'
-            }}>
-              {/* Max Price */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>Max Price (₹)</label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '10px', color: 'var(--text-light)', fontSize: '12px', fontWeight: 'bold' }}>₹</span>
-                  <input
-                    type="number"
-                    placeholder="E.g. 500"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="form-input"
-                    style={{ paddingLeft: '30px' }}
-                  />
-                </div>
-              </div>
-
-              {/* Instant Booking Filter */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={instantBooking}
-                    onChange={(e) => setInstantBooking(e.target.checked)}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
-                  />
-                  <span>Instant Booking ⚡</span>
-                </label>
-              </div>
-
-              {/* Ladies Only Filter */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={ladiesOnly}
-                    onChange={(e) => setLadiesOnly(e.target.checked)}
-                    style={{ width: '16px', height: '16px', accentColor: '#ec4899' }}
-                  />
-                  <span>Ladies Only 🌸</span>
-                </label>
-              </div>
-
-              {/* Max 2 in back */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={maxTwoInBack}
-                    onChange={(e) => setMaxTwoInBack(e.target.checked)}
-                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
-                  />
-                  <span>Max 2 in back seat 👥</span>
-                </label>
-              </div>
-            </div>
-          )}
         </form>
 
         {/* Results Section */}

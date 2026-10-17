@@ -454,8 +454,15 @@ export default function PassengerDashboard({ token, activeUser, onProfileUpdate,
               <strong style={{ color: 'var(--text-primary)' }}>{booking.seatsBooked} {booking.seatsBooked === 1 ? 'seat' : 'seats'}</strong>
             </div>
             <div>
-              <span>Fare: </span>
-              <strong className="gradient-text" style={{ fontSize: '14px', fontWeight: '800' }}>₹{(booking.fare || 0).toFixed(2)}</strong>
+              <span>Total Fare: </span>
+              <strong className="gradient-text" style={{ fontSize: '14px', fontWeight: '800' }}>
+                ₹{(booking.totalAmount || ((booking.fare || 0) + (booking.serviceFee || 0))).toFixed(2)}
+              </strong>
+              {booking.serviceFee > 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                  (₹{(booking.baseFare || booking.fare || 0).toFixed(2)} seat + ₹{booking.serviceFee.toFixed(2)} fee)
+                </span>
+              )}
             </div>
           </div>
 

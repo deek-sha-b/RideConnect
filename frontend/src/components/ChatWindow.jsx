@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
 
-export default function ChatWindow({ rideId, currentUser, token }) {
+export default function ChatWindow({ rideId, currentUser, token, passengerName, rideRoute, tripStatus }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
 
   const fetchMessages = async () => {
+    if (!rideId) return;
     try {
       const res = await fetch(`${API_URL}/api/chat/${rideId}`, {
         headers: {
@@ -31,14 +32,9 @@ export default function ChatWindow({ rideId, currentUser, token }) {
     return () => clearInterval(interval);
   }, [rideId]);
 
-  // Scroll to bottom on new message
-  // useEffect(() => {
-  //   chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  // }, [messages]);
-
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !rideId) return;
 
     try {
       const res = await fetch(`${API_URL}/api/chat/${rideId}`, {
@@ -64,7 +60,7 @@ export default function ChatWindow({ rideId, currentUser, token }) {
     <div className="glass-card" style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '350px',
+      height: '380px',
       background: 'var(--bg-secondary)',
       border: '1px solid var(--border-color)',
       borderRadius: '16px',
@@ -74,13 +70,37 @@ export default function ChatWindow({ rideId, currentUser, token }) {
       <div style={{
         display: 'flex',
         alignItems: 'center',
+        justify: 'space-between',
         gap: '8px',
         padding: '12px 16px',
         borderBottom: '1px solid var(--border-color)',
         background: 'var(--bg-primary)'
       }}>
-        <MessageCircle size={18} style={{ color: 'var(--primary)' }} />
-        <h4 style={{ fontSize: '14px', fontWeight: '700' }}>In-App Driver Chat</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <MessageCircle size={18} style={{ color: 'var(--primary)' }} />
+          <div>
+            <h4 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>
+              {passengerName ? `Chat with ${passengerName}` : 'In-App Ride Chat'}
+            </h4>
+            {rideRoute && (
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                Route: {rideRoute} {rideId ? `(ID: ...${String(rideId).slice(-6)})` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        {tripStatus && (
+          <span style={{
+            fontSize: '10px',
+            fontWeight: '800',
+            padding: '3px 8px',
+            borderRadius: '10px',
+            background: (tripStatus === 'completed' || tripStatus === 'cancelled') ? 'rgba(100,116,139,0.15)' : 'rgba(16,185,129,0.15)',
+            color: (tripStatus === 'completed' || tripStatus === 'cancelled') ? 'var(--text-secondary)' : 'var(--success)'
+          }}>
+            {tripStatus.toUpperCase()}
+          </span>
+        )}
       </div>
 
       {/* Message List */}

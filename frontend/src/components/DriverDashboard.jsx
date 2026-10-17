@@ -55,6 +55,7 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
 
   // Selected Passenger for Chat
   const [selectedChatBooking, setSelectedChatBooking] = useState(null);
+  const [chatCategory, setChatCategory] = useState('active'); // 'active' or 'past'
 
   // Calculator states
   const [recommendedSeatPrice, setRecommendedSeatPrice] = useState(0);
@@ -62,10 +63,24 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
   const [maxSeatPrice, setMaxSeatPrice] = useState(0);
   const [routeDist, setRouteDist] = useState(0);
 
+  const getCoords = (stop) => {
+    if (!stop) return null;
+    if (typeof stop === 'object') {
+      if (stop.lat && stop.lng) return { lat: parseFloat(stop.lat), lng: parseFloat(stop.lng) };
+      if (stop.name) stop = stop.name;
+    }
+    if (typeof stop === 'string') {
+      if (LOCAL_PLACES[stop]) return LOCAL_PLACES[stop];
+      const match = stop.match(/\(([-+]?\d+\.?\d*),\s*([-+]?\d+\.?\d*)\)/);
+      if (match) return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
+    }
+    return null;
+  };
+
   // Helper to calculate Haversine distance
   const getDistanceBetween = (loc1, loc2) => {
-    const coords1 = LOCAL_PLACES[loc1];
-    const coords2 = LOCAL_PLACES[loc2];
+    const coords1 = getCoords(loc1);
+    const coords2 = getCoords(loc2);
     if (!coords1 || !coords2) return 0;
 
     const R = 6371;
@@ -84,8 +99,8 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
     let totalDist = 0;
     let isValid = true;
     for (let i = 0; i < stops.length - 1; i++) {
-      const s1 = typeof stops[i] === 'object' ? stops[i].name : stops[i];
-      const s2 = typeof stops[i + 1] === 'object' ? stops[i + 1].name : stops[i + 1];
+      const s1 = stops[i];
+      const s2 = stops[i + 1];
       if (s1 && s2) {
         totalDist += getDistanceBetween(s1, s2);
       } else {
@@ -310,10 +325,28 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
     );
   };
 
+  // Helper to derive trip status label
+  const getTripStatusLabel = (b) => {
+    if (!b) return 'Unknown';
+    if (b.status === 'completed' || (b.ride && b.ride.status === 'completed')) return 'Completed';
+    if (b.status === 'cancelled' || b.status === 'rejected' || (b.ride && b.ride.status === 'cancelled')) return 'Cancelled';
+
+    const now = new Date();
+    const depTime = b.ride?.departureTime ? new Date(b.ride.departureTime) : null;
+    if (depTime && now < depTime) {
+      return 'Scheduled';
+    }
+    return 'Active';
+  };
+
   // Grouped Bookings
-  const activeBookings = driverBookings.filter(b => b.status === 'accepted' || b.status === 'started');
+  const activeBookings = driverBookings.filter(b => {
+    if (['completed', 'cancelled', 'rejected'].includes(b.status)) return false;
+    if (b.ride && ['completed', 'cancelled'].includes(b.ride.status)) return false;
+    return ['accepted', 'active', 'in_progress', 'started'].includes(b.status) || getTripStatusLabel(b) !== 'Completed';
+  });
   const requestedBookings = driverBookings.filter(b => b.status === 'requested');
-  const pastCompletedBookings = driverBookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+  const pastCompletedBookings = driverBookings.filter(b => b.status === 'completed' || b.status === 'cancelled' || getTripStatusLabel(b) === 'Completed');
 
   if (loading) {
     return (
@@ -402,10 +435,8 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
             </div>
           </div>
 
-          {/* 2. Quick Actions Grid */}
+          {/* 2. Action Cards */}
           <div className="glass-card" style={{ padding: '24px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px' }}>Quick Actions</h3>
-
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
               <button
                 onClick={() => setActiveTab('offer-ride')}
@@ -441,19 +472,19 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
             </div>
           </div>
 
-          {/* 3. Current Active Trip Card & Today's Passenger Requests */}
+          {/* 3. Active Trips Card & Today's Passenger Requests */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
 
-            {/* Current Active Trip Card */}
+            {/* Active Trips Card */}
             <div className="glass-card" style={{ padding: '24px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Navigation size={18} style={{ color: 'var(--primary)' }} /> Current Active Trip
+                    <Navigation size={18} style={{ color: 'var(--primary)' }} /> Active Trips ({activeBookings.length})
                   </h3>
                   {activeBookings.length > 0 && (
                     <span style={{ padding: '3px 10px', borderRadius: '12px', background: 'rgba(16,185,129,0.15)', color: 'var(--success)', fontSize: '10px', fontWeight: '800' }}>
-                      LIVE IN PROGRESS
+                      ONGOING & SCHEDULED
                     </span>
                   )}
                 </div>
@@ -461,19 +492,38 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
                 {activeBookings.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-secondary)' }}>
                     <Car size={36} style={{ opacity: 0.5, marginBottom: '10px' }} />
-                    <p style={{ fontSize: '13px', margin: 0 }}>No trip currently active.</p>
+                    <p style={{ fontSize: '13px', margin: 0 }}>No active trip at the moment.</p>
                   </div>
                 ) : (
-                  <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700' }}>
-                      Route: {activeBookings[0].pickupLocation} ➔ {activeBookings[0].destination}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Passenger: <b>{activeBookings[0].passenger?.name}</b> ({activeBookings[0].seatsBooked} seat(s))
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Fare Collectible: <b className="gradient-text" style={{ fontSize: '14px' }}>₹{(activeBookings[0].fare || 0).toFixed(2)}</b>
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {activeBookings.map((b) => {
+                      const statusLabel = getTripStatusLabel(b);
+                      const isScheduled = statusLabel === 'Scheduled';
+
+                      return (
+                        <div key={b._id} style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '700' }}>
+                              Route: {b.pickupLocation} ➔ {b.destination}
+                            </div>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '800',
+                              background: isScheduled ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16,185,129,0.15)',
+                              color: isScheduled ? '#3b82f6' : 'var(--success)'
+                            }}>
+                              {statusLabel.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            Passenger: <b>{b.passenger?.name || 'Passenger'}</b> ({b.seatsBooked} seat(s))
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>Departure: <b>{new Date(b.ride?.departureTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></span>
+                            <span>Fare: <b className="gradient-text" style={{ fontSize: '14px' }}>₹{(b.fare || 0).toFixed(2)}</b></span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -661,7 +711,7 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
                 </div>
               </div>
 
-              {/*  Automatic Fare Calculation & Max Limit Adjustment Control */}
+              {/* Fare Calculation & Seat Price Control */}
               <div className="glass-card" style={{
                 padding: '20px',
                 background: 'var(--bg-primary)',
@@ -671,41 +721,84 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
                 flexDirection: 'column',
                 gap: '16px'
               }}>
-                {routeDist > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    <span>Route Distance: <b>{routeDist.toFixed(1)} km</b></span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    💰 Trip Fare & Seat Pricing
+                  </h4>
+                  {routeDist > 0 && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '4px 10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      Route Distance: <b>{routeDist.toFixed(1)} km</b>
+                    </span>
+                  )}
+                </div>
+
+                {/* Always-visible Direct Seat Price Input */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
+                    Your Seat Price per Passenger (₹)
+                  </label>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: '700', color: 'var(--text-secondary)' }}>₹</span>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder={recommendedSeatPrice ? `e.g. ${recommendedSeatPrice}` : "Enter seat price e.g. 50"}
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="form-input"
+                        style={{ paddingLeft: '30px', fontWeight: '800', fontSize: '16px' }}
+                        required
+                      />
+                    </div>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px', fontWeight: '600' }}>TOTAL ESTIMATED REVENUE</span>
+                      <strong className="gradient-text" style={{ fontSize: '16px', fontWeight: '900' }}>
+                        ₹{(parseFloat(price || 0) * (parseInt(totalSeats) || 1)).toFixed(0)}
+                      </strong>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', marginLeft: '4px' }}>({totalSeats} seats)</span>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 {routeDist > 0 && recommendedSeatPrice > 0 ? (
                   <>
                     {/* Operating Cost Breakdown Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', fontSize: '12px' }}>
                       <div style={{ background: 'var(--bg-secondary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                        <span style={{ color: 'var(--text-light)', fontSize: '10px', display: 'block', fontWeight: '600' }}>VEHICLE CLASS</span>
+                        <span style={{ color: 'var(--text-light)', fontSize: '10px', display: 'block', fontWeight: '600' }}>VEHICLE OPERATING COST</span>
                         <strong>{activeUser?.driverDetails?.vehicleType || 'Sedan'} (₹{(VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate || 6).toFixed(1)}/km)</strong>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>
+                          Fuel ₹{VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.fuelCost} + Wear ₹{VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.wearCost}
+                        </span>
                       </div>
                       <div style={{ background: 'var(--bg-secondary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <span style={{ color: 'var(--text-light)', fontSize: '10px', display: 'block', fontWeight: '600' }}>TOTAL TRIP COST</span>
-                        <strong>₹{(routeDist * (VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate || 6)).toFixed(0)}</strong>
+                        <strong style={{ fontSize: '15px' }}>₹{(routeDist * (VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate || 6)).toFixed(0)}</strong>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>
+                          {routeDist.toFixed(0)} km × ₹{VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate}/km
+                        </span>
                       </div>
                       <div style={{ background: 'var(--bg-secondary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <span style={{ color: 'var(--text-light)', fontSize: '10px', display: 'block', fontWeight: '600' }}>SHARED OCCUPANTS</span>
-                        <strong>{(parseInt(totalSeats) || 1) + 1} (1 Driver + {totalSeats} Seats)</strong>
+                        <strong style={{ fontSize: '15px' }}>{(parseInt(totalSeats) || 1) + 1}</strong>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>
+                          1 Driver + {totalSeats} Passenger Seats
+                        </span>
                       </div>
                       <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid var(--success)', color: 'var(--success)' }}>
                         <span style={{ fontSize: '10px', display: 'block', fontWeight: '700' }}>RECOMMENDED / SEAT</span>
-                        <strong style={{ fontSize: '15px' }}>₹{recommendedSeatPrice}</strong>
+                        <strong style={{ fontSize: '16px' }}>₹{recommendedSeatPrice}</strong>
+                        <span style={{ fontSize: '10px', opacity: 0.85, display: 'block' }}>
+                          ₹{(routeDist * (VEHICLE_OPERATING_COSTS[activeUser?.driverDetails?.vehicleType || 'Sedan']?.totalRate || 6)).toFixed(0)} ÷ {(parseInt(totalSeats) || 1) + 1}
+                        </span>
                       </div>
                     </div>
 
                     {/* Slider & Bounded Price Adjuster */}
-                    <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
-                          <label style={{ fontSize: '13px', fontWeight: '700', display: 'block' }}>
-                            Your Seat Price: <span className="gradient-text" style={{ fontSize: '20px', fontWeight: '900' }}>₹{price || recommendedSeatPrice}</span>
-                          </label>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                             Allowed adjustment bounds: <b>₹{minSeatPrice}</b> (-20%) to <b>₹{maxSeatPrice}</b> (+20%)
                           </span>
@@ -724,22 +817,22 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
                         type="range"
                         min={minSeatPrice}
                         max={maxSeatPrice}
-                        step="5"
+                        step="1"
                         value={price || recommendedSeatPrice}
                         onChange={(e) => setPrice(e.target.value)}
                         style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--primary)' }}
                       />
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-light)', marginTop: '6px' }}>
-                        <span>Min Limit (-20%): ₹{minSeatPrice}</span>
-                        <span style={{ color: 'var(--success)', fontWeight: '700' }}>Recommended: ₹{recommendedSeatPrice}</span>
-                        <span>Max Limit (+20%): ₹{maxSeatPrice}</span>
+                        <span>Min (-20%): ₹{minSeatPrice}</span>
+                        <button type="button" onClick={() => setPrice(recommendedSeatPrice.toString())} style={{ background: 'none', border: 'none', color: 'var(--success)', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>Reset to Recommended (₹{recommendedSeatPrice})</button>
+                        <span>Max (+20%): ₹{maxSeatPrice}</span>
                       </div>
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px', fontStyle: 'italic' }}>
-                    Select origin and destination cities above to calculate automatic distance and operating cost fare recommendations.
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontStyle: 'italic' }}>
+                    💡 Select origin and destination cities above to automatically calculate route distance and operating cost fare recommendations.
                   </div>
                 )}
               </div>
@@ -864,7 +957,7 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                         <span>📅 Departure: <b style={{ color: 'var(--text-primary)' }}>{ride.departureTime ? new Date(ride.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</b></span>
                         <span>💺 Seats: <b style={{ color: 'var(--text-primary)' }}>{ride.availableSeats} available</b> / {ride.totalSeats}</span>
-                        <span>💰 Fare/Seat: <b className="gradient-text">₹{ride.price}</b></span>
+                        <span>💰 Fare/Seat: <b className="gradient-text">₹{ride.pricePerSeat || (ride.totalSeats > 0 ? (ride.price / ride.totalSeats).toFixed(2) : ride.price)}</b></span>
                       </div>
                     </div>
 
@@ -1029,55 +1122,106 @@ export default function DriverDashboard({ token, activeUser, activeTab: propActi
       {/* ========================================================================= */}
       {/* 6. MESSAGES VIEW                                                          */}
       {/* ========================================================================= */}
-      {activeTab === 'messages' && (
-        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px', margin: '0 auto' }}>
-          <div>
-            <h2 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '4px' }}>
-              Passenger <span className="gradient-text">Messages</span>
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-              Chat directly with passengers on your active and scheduled journeys.
-            </p>
-          </div>
+      {activeTab === 'messages' && (() => {
+        const activeChatBookings = driverBookings.filter(b => b.status !== 'completed' && b.status !== 'cancelled' && b.status !== 'rejected');
+        const pastChatBookings = driverBookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
 
-          {activeBookings.length === 0 && requestedBookings.length === 0 ? (
-            <div className="glass-card" style={{ padding: '50px 20px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
-              <MessageCircle size={44} style={{ opacity: 0.5, marginBottom: '12px' }} />
-              <h3 style={{ fontSize: '18px', marginBottom: '6px' }}>No Active Passengers</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Chat will become available when passengers book seats on your rides.</p>
-            </div>
-          ) : (
+        const currentCategoryBookings = chatCategory === 'active' ? activeChatBookings : pastChatBookings;
+        const currentChatBooking = selectedChatBooking && currentCategoryBookings.some(b => b._id === selectedChatBooking._id)
+          ? selectedChatBooking
+          : currentCategoryBookings[0];
+
+        return (
+          <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '850px', margin: '0 auto' }}>
             <div>
-              {/* Passenger Selector */}
-              {driverBookings.length > 0 && (
-                <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-                  {driverBookings.map((b) => (
-                    <button
-                      key={b._id}
-                      onClick={() => setSelectedChatBooking(b)}
-                      style={{
-                        padding: '8px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '700',
-                        border: selectedChatBooking?._id === b._id ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                        background: selectedChatBooking?._id === b._id ? 'var(--primary)' : 'var(--bg-secondary)',
-                        color: selectedChatBooking?._id === b._id ? '#fff' : 'var(--text-primary)',
-                        cursor: 'pointer', whiteSpace: 'nowrap'
-                      }}
-                    >
-                      👤 {b.passenger?.name || 'Passenger'} ({b.pickupLocation})
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <ChatWindow
-                rideId={(selectedChatBooking || activeBookings[0] || driverBookings[0])?.ride?._id}
-                currentUser={activeUser}
-                token={token}
-              />
+              <h2 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '4px' }}>
+                Passenger <span className="gradient-text">Messages</span>
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                Chat directly with passengers on active, scheduled, or past completed journeys.
+              </p>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Category Toggle Tabs */}
+            <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <button
+                onClick={() => setChatCategory('active')}
+                style={{
+                  padding: '8px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
+                  border: 'none', cursor: 'pointer',
+                  background: chatCategory === 'active' ? 'var(--primary)' : 'var(--bg-secondary)',
+                  color: chatCategory === 'active' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                Active Conversations ({activeChatBookings.length})
+              </button>
+              <button
+                onClick={() => setChatCategory('past')}
+                style={{
+                  padding: '8px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
+                  border: 'none', cursor: 'pointer',
+                  background: chatCategory === 'past' ? 'var(--primary)' : 'var(--bg-secondary)',
+                  color: chatCategory === 'past' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                Past / Archived Conversations ({pastChatBookings.length})
+              </button>
+            </div>
+
+            {currentCategoryBookings.length === 0 ? (
+              <div className="glass-card" style={{ padding: '50px 20px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
+                <MessageCircle size={44} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                <h3 style={{ fontSize: '18px', marginBottom: '6px' }}>
+                  No {chatCategory === 'active' ? 'Active' : 'Past'} Passenger Conversations
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  {chatCategory === 'active'
+                    ? 'Active passenger chats will appear here when seats are requested/booked.'
+                    : 'Completed and archived trip conversations will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <div>
+                {/* Passenger / Trip Conversation Selector */}
+                <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px' }}>
+                  {currentCategoryBookings.map((b) => {
+                    const isSelected = currentChatBooking?._id === b._id;
+                    const statusLabel = getTripStatusLabel(b);
+                    return (
+                      <button
+                        key={b._id}
+                        onClick={() => setSelectedChatBooking(b)}
+                        style={{
+                          padding: '10px 16px', borderRadius: '12px', fontSize: '12px', fontWeight: '700',
+                          border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                          background: isSelected ? 'var(--primary)' : 'var(--bg-secondary)',
+                          color: isSelected ? '#fff' : 'var(--text-primary)',
+                          cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px'
+                        }}
+                      >
+                        <span>👤 {b.passenger?.name || 'Passenger'}</span>
+                        <span style={{ opacity: 0.8, fontSize: '11px' }}>({b.pickupLocation} ➔ {b.destination})</span>
+                        <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.2)' }}>
+                          {statusLabel.toUpperCase()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <ChatWindow
+                  rideId={currentChatBooking?.ride?._id || currentChatBooking?.ride}
+                  currentUser={activeUser}
+                  token={token}
+                  passengerName={currentChatBooking?.passenger?.name}
+                  rideRoute={currentChatBooking ? `${currentChatBooking.pickupLocation} ➔ ${currentChatBooking.destination}` : null}
+                  tripStatus={getTripStatusLabel(currentChatBooking)}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* 7. EARNINGS VIEW                                                         */}
