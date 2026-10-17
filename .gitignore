@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+.env.*
+backend/.env
+frontend/.env
+*.local
+
+# Production builds
+dist/
+build/
+.dist/
+
+# Uploads & temporary test files
+scratch/
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Logs & System
+*.log
+npm-debug.log*
+yarn-debug.log*
+.DS_Store
+.vscode/
+.idea/

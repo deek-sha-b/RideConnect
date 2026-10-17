@@ -105,7 +105,7 @@ export default function PassengerDashboard({ token, activeUser, onProfileUpdate,
 
   const handleShareTrip = (bookingId) => {
     setSharedBookingId(bookingId);
-    navigator.clipboard.writeText(`http://localhost:3000/track/ride_${bookingId}`);
+    navigator.clipboard.writeText(`${window.location.origin}/track/ride_${bookingId}`);
     setTimeout(() => {
       setSharedBookingId(null);
     }, 3000);

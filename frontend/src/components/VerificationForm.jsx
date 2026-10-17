@@ -91,7 +91,7 @@ export default function VerificationForm({ token, onVerificationSubmitted, curre
               <div>
                 <b>Document Scan:</b>{' '}
                 <a 
-                  href={`http://localhost:5050${driverDetails.licenseUrl}`} 
+                  href={`${API_URL}${driverDetails.licenseUrl}`} 
                   target="_blank" 
                   rel="noreferrer"
                   style={{ color: 'var(--primary)', textDecoration: 'underline', fontWeight: '600' }}
@@ -150,7 +150,7 @@ export default function VerificationForm({ token, onVerificationSubmitted, curre
               <div>
                 <b>Document Scan:</b>{' '}
                 <a 
-                  href={`http://localhost:5050${driverDetails.licenseUrl}`} 
+                  href={`${API_URL}${driverDetails.licenseUrl}`} 
                   target="_blank" 
                   rel="noreferrer"
                   style={{ color: 'var(--primary)', textDecoration: 'underline', fontWeight: '600' }}
